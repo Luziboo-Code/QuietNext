@@ -707,12 +707,13 @@ impl Store {
 
     pub fn default_root() -> PathBuf {
         // The web build's library lives in memory (vfs).
-        if cfg!(target_family = "wasm") { return PathBuf::from("/Quiet.Next") }
+        if cfg!(target_family = "wasm") { return PathBuf::from("/QuietNext") }
         let docs = dirs::document_dir().or_else(|| dirs::home_dir().map(|h| h.join("Documents"))).unwrap_or_else(|| PathBuf::from("."));
-        let next = docs.join("Quiet.Next");
-        // An existing library from before the rename keeps opening where it is.
+        let next = docs.join("QuietNext");
+        // A library from before either rename keeps opening where it is.
+        let old_next = docs.join("Quiet.Next");
         let old = docs.join("Quiet.md");
-        if !next.fs_exists() && old.fs_exists() { old } else { next }
+        if next.fs_exists() { next } else if old_next.fs_exists() { old_next } else if old.fs_exists() { old } else { next }
     }
 
     /// The library's own data (`.quiet/`): preferences, shortcuts, themes,
@@ -987,11 +988,11 @@ impl Store {
         let flat = Self::flat_at(&root);
         if flat {
             let format = reread::<FormatMarker>(&root.join("format.json")).map_or(0, |m| m.format);
-            anyhow::ensure!(format <= FORMAT, "这个文档库由更新版本的 Quiet.Next 创建，请升级后再打开");
+            anyhow::ensure!(format <= FORMAT, "这个文档库由更新版本的 QuietNext 创建，请升级后再打开");
             if !root.join("format.json").fs_exists() { write_atomic(&root.join("format.json"), &serde_json::to_vec_pretty(&FormatMarker { format })?)?; }
         } else {
             match crate::vfs::read(&marker).ok().and_then(|b| serde_json::from_slice::<FormatMarker>(&b).ok()) {
-                Some(m) if m.format > FORMAT => anyhow::bail!("这个文档库由更新版本的 Quiet.Next 创建，请升级后再打开"),
+                Some(m) if m.format > FORMAT => anyhow::bail!("这个文档库由更新版本的 QuietNext 创建，请升级后再打开"),
                 // Moved to the new layout; what was left of the old one is set aside.
                 Some(_) => if migrate::legacy(&root) { migrate::finish(&root, &mut warnings); },
                 None => {
@@ -1257,9 +1258,9 @@ impl Store {
         f.lock()?;
         let lock = WriteLock(Some(f));
         // Another copy moved it to the new layout meanwhile: nothing more is written here.
-        anyhow::ensure!(!self.flat || !self.root.join(INTERNAL).join("format.json").fs_exists(), "文档库已升级到新格式，请重新打开 Quiet.Next");
+        anyhow::ensure!(!self.flat || !self.root.join(INTERNAL).join("format.json").fs_exists(), "文档库已升级到新格式，请重新打开 QuietNext");
         let marker: FormatMarker = serde_json::from_slice(&crate::vfs::read(self.internal().join("format.json"))?)?;
-        anyhow::ensure!(marker.format <= FORMAT, "这个文档库由更新版本的 Quiet.Next 创建，请升级后再打开");
+        anyhow::ensure!(marker.format <= FORMAT, "这个文档库由更新版本的 QuietNext 创建，请升级后再打开");
         // An unreadable index is not judged here (that is `open`'s job): the
         // version in memory is written back unchanged.
         if self.flat {
@@ -3997,14 +3998,14 @@ mod tests {
         let mut old = Old::new(&lib, 3);
         let abs = |rel: &str| lib.0.join(rel).to_string_lossy().into_owned();
         let image = |src: String| Block::new(BlockKind::Image { src_kind: "src".into(), src, width: None, height: None, caption: None, crop: None }, RichText::default());
-        let moved = crate::vfs::temp_dir().join("elsewhere/Quiet.Next/assets/p.png").to_string_lossy().into_owned();
+        let moved = crate::vfs::temp_dir().join("elsewhere/QuietNext/assets/p.png").to_string_lossy().into_owned();
         let d = Document { title: RichText::plain("图"), blocks: vec![
             image(abs("assets/p.png")),
             Block::new(BlockKind::File(FileBlock { src_kind: "path".into(), src: abs("assets/files/1234/报告.pdf"), name: "报告.pdf".into(), view: FileView::Card }), RichText::default()),
             image(moved.clone()),
             image(abs("assets/gone.png")),
             // Only through `.assets/x/` once moved: the fallback must not follow it.
-            image(crate::vfs::temp_dir().join("elsewhere/Quiet.Next/assets/x/../../secret.png").to_string_lossy().into_owned()),
+            image(crate::vfs::temp_dir().join("elsewhere/QuietNext/assets/x/../../secret.png").to_string_lossy().into_owned()),
         ], ..Default::default() };
         let id = old.put(&d, Meta::default());
         old.write();
@@ -4079,8 +4080,8 @@ mod tests {
     #[test]
     fn synced_folders_are_recognised() {
         let home = dirs::home_dir().unwrap();
-        assert_eq!(sync_of(&home.join("Library/Mobile Documents/com~apple~CloudDocs/Quiet.Next")), SyncService::ICloud);
-        assert_eq!(sync_of(&home.join("Library/CloudStorage/OneDrive-Personal/Quiet.Next")), SyncService::Provider("OneDrive".into()));
+        assert_eq!(sync_of(&home.join("Library/Mobile Documents/com~apple~CloudDocs/QuietNext")), SyncService::ICloud);
+        assert_eq!(sync_of(&home.join("Library/CloudStorage/OneDrive-Personal/QuietNext")), SyncService::Provider("OneDrive".into()));
         assert_eq!(sync_of(&crate::vfs::temp_dir().join("x")), SyncService::Local);
         // An old library with a conflict copy left by syncing asks first.
         let lib = Lib::new("conflict");
@@ -4272,7 +4273,7 @@ mod tests {
         asset(&lib, "spare.png");
         // Markdown percent-encodes a space, DocxXML escapes `&`, and a page in
         // a subfolder writes its source relative to itself.
-        page_at(&lib, "note.md", "![](/Users/x/Quiet.Next/.assets/1a2b-Screen%20Shot%202026-11-17%20at%2010.00.png)");
+        page_at(&lib, "note.md", "![](/Users/x/QuietNext/.assets/1a2b-Screen%20Shot%202026-11-17%20at%2010.00.png)");
         page_at(&lib, "sub/deep.md", "![](../.assets/a&amp;b.png)");
         // One link that does not decode to UTF-8 leaves the rest decodable,
         // and Markdown may escape punctuation with a backslash.
@@ -4302,7 +4303,7 @@ mod tests {
         asset(&lib, "unsaved.png");
         asset(&lib, "undone.png");
         // Text not saved yet, and a snapshot Undo can still bring back.
-        let live = vec![".assets/unsaved.png".to_string(), "/Users/x/Quiet.Next/.assets/undone.png".to_string()];
+        let live = vec![".assets/unsaved.png".to_string(), "/Users/x/QuietNext/.assets/undone.png".to_string()];
         assert!(spare_assets(&lib, live).is_empty());
     }
 

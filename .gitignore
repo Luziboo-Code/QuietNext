@@ -3,6 +3,7 @@
 /dist-preview
 .DS_Store
 /archive/
+.commandcode/
 /shared-mock/*
 !/shared-mock/library/
 !/shared-mock/guides/

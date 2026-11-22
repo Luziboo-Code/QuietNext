@@ -10,6 +10,7 @@ use crate::theme::{self, Theme};
 use crate::ui::{self, icon, TitleBarExt};
 use gpui::{prelude::FluentBuilder, *};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 const DAY: i64 = 86_400;
@@ -109,13 +110,24 @@ pub struct AiDraft {
 }
 
 /// 复习 › AI 生成卡片: the chosen documents and the preview of what came back.
+pub struct DocPick {
+    id: String,
+    title: String,
+    selected: bool,
+    /// Folder ids from the nearest parent up to the root.
+    folders: Vec<String>,
+}
+
 pub struct AiPanel {
-    /// (id, title, selected)
-    docs: Vec<(String, String, bool)>,
+    docs: Vec<DocPick>,
+    folders: Vec<(String, String)>,
+    folder: Option<String>,
+    search: Entity<TextField>,
     count: u32,
     generating: bool,
     error: Option<SharedString>,
     results: Vec<AiDraft>,
+    _search_sub: Subscription,
 }
 
 pub struct Review {
@@ -534,16 +546,50 @@ impl Workspace {
                 .on_click(cx.listener(|w, _, _, cx| w.open_settings(crate::settings::Page::Review, cx)))))
     }
 
-    pub(crate) fn open_ai(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn open_ai(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let current = self.current.clone();
-        let mut docs: Vec<(String, String, bool)> = self.entries.iter()
-            .filter(|e| e.meta.folder.is_none() && e.meta.kind == crate::store::DocKind::Doc && !e.meta.local())
-            .map(|e| (e.id.clone(), crate::settings::display_title(&e.title), current.as_deref() == Some(e.id.as_str())))
+        let parents: HashMap<String, String> = self.entries.iter()
+            .filter_map(|e| e.meta.parent.clone().map(|p| (e.id.clone(), p)))
             .collect();
-        docs.sort_by_key(|d| d.1.to_lowercase());
-        self.review.ai = Some(AiPanel { docs, count: 5, generating: false, error: None, results: Vec::new() });
+        let mut folders: Vec<(String, String)> = self.entries.iter()
+            .filter(|e| e.meta.folder.is_some())
+            .map(|e| (e.id.clone(), crate::settings::display_title(&e.title)))
+            .collect();
+        folders.sort_by_key(|f| f.1.to_lowercase());
+        let mut docs: Vec<DocPick> = self.entries.iter()
+            .filter(|e| e.meta.folder.is_none() && e.meta.kind == crate::store::DocKind::Doc && !e.meta.local())
+            .map(|e| {
+                let mut chain = Vec::new();
+                let mut parent = e.meta.parent.clone();
+                while let Some(p) = parent {
+                    parent = parents.get(&p).cloned();
+                    chain.push(p);
+                }
+                DocPick {
+                    id: e.id.clone(),
+                    title: crate::settings::display_title(&e.title),
+                    selected: current.as_deref() == Some(e.id.as_str()),
+                    folders: chain,
+                }
+            })
+            .collect();
+        docs.sort_by_key(|d| d.title.to_lowercase());
+        let search = cx.new(|cx| {
+            let mut f = TextField::new(tr("搜索文档", "Search documents"), cx);
+            f.size = 12.;
+            f.line_height = 18.;
+            f
+        });
+        let search_sub = cx.subscribe(&search, |_, _, ev: &TextFieldEvent, cx| {
+            if matches!(ev, TextFieldEvent::Changed) { cx.notify() }
+        });
+        self.review.ai = Some(AiPanel {
+            docs, folders, folder: None, search: search.clone(), count: 5,
+            generating: false, error: None, results: Vec::new(), _search_sub: search_sub,
+        });
         self.review.draft = None;
         self.review.session = None;
+        window.focus(&search.focus_handle(cx), cx);
         cx.notify();
     }
 
@@ -551,20 +597,46 @@ impl Workspace {
         let Some(a) = &self.review.ai else { return div().into_any_element() };
         let label = |text: &'static str| div().text_size(px(11.)).text_color(Theme::text_caption()).child(text);
         let selected = a.results.iter().filter(|r| r.selected).count();
-        let chosen = a.docs.iter().filter(|d| d.2).count();
-        let all = !a.docs.is_empty() && a.docs.iter().all(|d| d.2);
+        let chosen = a.docs.iter().filter(|d| d.selected).count();
+        let query = a.search.read(cx).text.trim().to_lowercase();
+        let visible: Vec<(usize, &DocPick)> = a.docs.iter().enumerate()
+            .filter(|(_, d)| a.folder.as_deref().is_none_or(|f| d.folders.iter().any(|x| x == f)))
+            .filter(|(_, d)| query.is_empty() || d.title.to_lowercase().contains(&query))
+            .collect();
+        let all_visible = !visible.is_empty() && visible.iter().all(|(_, d)| d.selected);
         let mut doc_list = div().id("ai-docs").max_h(px(240.)).overflow_y_scroll().flex().flex_col().gap(px(1.))
             .rounded(px(9.)).border_1().border_color(Theme::line_border()).bg(theme::raised(Theme::bg_body())).p(px(4.));
         if a.docs.is_empty() {
             doc_list = doc_list.child(div().px(px(8.)).py(px(12.)).text_size(px(11.)).text_color(Theme::text_placeholder())
                 .child(tr("文档库里还没有文档，先新建一篇笔记。", "No documents yet; create a note first.")));
+        } else if visible.is_empty() {
+            doc_list = doc_list.child(div().px(px(8.)).py(px(12.)).text_size(px(11.)).text_color(Theme::text_placeholder())
+                .child(tr("没有匹配的文档", "No matching documents")));
         }
-        for (i, (_, title, on)) in a.docs.iter().enumerate() {
-            doc_list = doc_list.child(div().id(("ai-doc", i)).h(px(30.)).px(px(7.)).flex().items_center().gap(px(8.)).rounded(px(6.))
+        for (i, d) in &visible {
+            let idx = *i;
+            doc_list = doc_list.child(div().id(("ai-doc", idx)).h(px(30.)).px(px(7.)).flex().items_center().gap(px(8.)).rounded(px(6.))
                 .cursor_pointer().hover(|s| s.bg(Theme::fill_hover()))
-                .child(ui::checkbox(*on))
-                .child(div().flex_1().min_w_0().truncate().text_size(px(12.)).child(title.clone()))
-                .on_click(cx.listener(move |w, _, _, cx| w.ai_toggle_doc(i, cx))));
+                .child(ui::checkbox(d.selected))
+                .child(div().flex_1().min_w_0().truncate().text_size(px(12.)).child(d.title.clone()))
+                .on_click(cx.listener(move |w, _, _, cx| w.ai_toggle_doc(idx, cx))));
+        }
+        let mut folder_row = div().flex().flex_wrap().gap(px(4.));
+        folder_row = folder_row.child(div().id("ai-folder-all").h(px(22.)).px(px(8.)).flex().items_center().rounded(px(6.)).cursor_pointer()
+            .text_size(px(10.)).line_height(px(14.))
+            .when(a.folder.is_none(), |d| d.bg(theme::ca(0x2383e2, 0.12)).text_color(Theme::primary()))
+            .when(a.folder.is_some(), |d| d.bg(Theme::fill_hover()).text_color(Theme::text_caption()).hover(|s| s.bg(Theme::fill_hover_strong())))
+            .child(tr("全部文件夹", "All folders"))
+            .on_click(cx.listener(|w, _, _, cx| { if let Some(a) = &mut w.review.ai { a.folder = None; } cx.notify(); })));
+        for (i, (id, name)) in a.folders.iter().enumerate() {
+            let folder_id = id.clone();
+            let on = a.folder.as_deref() == Some(id.as_str());
+            folder_row = folder_row.child(div().id(("ai-folder", i)).h(px(22.)).px(px(8.)).flex().items_center().rounded(px(6.)).cursor_pointer()
+                .text_size(px(10.)).line_height(px(14.))
+                .when(on, |d| d.bg(theme::ca(0x2383e2, 0.12)).text_color(Theme::primary()))
+                .when(!on, |d| d.bg(Theme::fill_hover()).text_color(Theme::text_caption()).hover(|s| s.bg(Theme::fill_hover_strong())))
+                .child(name.clone())
+                .on_click(cx.listener(move |w, _, _, cx| { if let Some(a) = &mut w.review.ai { a.folder = Some(folder_id.clone()); } cx.notify(); })));
         }
         let mut results = div().flex().flex_col().gap(px(6.));
         for (i, r) in a.results.iter().enumerate() {
@@ -585,8 +657,12 @@ impl Workspace {
                 .child(tr("学习材料直接来自你选择的文档；可以同时选择一篇或多篇，生成后先预览再加入。", "Study material comes straight from the documents you pick; choose one or several, preview, then add.")))
             .child(div().flex().items_center().justify_between()
                 .child(label(tr("选择文档", "Documents")))
-                .child(settings::link_button("ai-select-all", if all { tr("全不选", "Select none") } else { tr("全选", "Select all") })
+                .child(settings::link_button("ai-select-all", if all_visible { tr("全不选", "Select none") } else { tr("全选", "Select all") })
                     .on_click(cx.listener(|w, _, _, cx| w.ai_toggle_all_docs(cx)))))
+            .child(div().h(px(28.)).px(px(7.)).flex().items_center().gap(px(6.)).rounded(px(7.)).bg(Theme::fill_hover())
+                .child(icon("search", 13., Theme::icon()))
+                .child(div().flex_1().min_w_0().child(a.search.clone())))
+            .when(!a.folders.is_empty(), |d| d.child(folder_row))
             .child(doc_list)
             .child(div().flex().items_center().gap(px(8.))
                 .child(div().flex_1().text_size(px(11.)).text_color(Theme::text_caption()).child(crate::localized_format!("已选 {} 篇文档", "{} documents selected", chosen)))
@@ -626,13 +702,19 @@ impl Workspace {
     }
 
     fn ai_toggle_doc(&mut self, i: usize, cx: &mut Context<Self>) {
-        if let Some(a) = &mut self.review.ai && let Some(d) = a.docs.get_mut(i) { d.2 = !d.2; cx.notify(); }
+        if let Some(a) = &mut self.review.ai && let Some(d) = a.docs.get_mut(i) { d.selected = !d.selected; cx.notify(); }
     }
 
     fn ai_toggle_all_docs(&mut self, cx: &mut Context<Self>) {
         if let Some(a) = &mut self.review.ai {
-            let all = !a.docs.is_empty() && a.docs.iter().all(|d| d.2);
-            for d in &mut a.docs { d.2 = !all; }
+            let query = a.search.read(cx).text.trim().to_lowercase();
+            let folder = a.folder.clone();
+            let visible: Vec<usize> = a.docs.iter().enumerate()
+                .filter(|(_, d)| folder.as_deref().is_none_or(|f| d.folders.iter().any(|x| x == f)))
+                .filter(|(_, d)| query.is_empty() || d.title.to_lowercase().contains(&query))
+                .map(|(i, _)| i).collect();
+            let all = !visible.is_empty() && visible.iter().all(|i| a.docs[*i].selected);
+            for i in visible { a.docs[i].selected = !all; }
             cx.notify();
         }
     }
@@ -644,7 +726,7 @@ impl Workspace {
     fn ai_generate(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(a) = &self.review.ai else { return };
         if a.generating { return }
-        let ids: Vec<String> = a.docs.iter().filter(|d| d.2).map(|d| d.0.clone()).collect();
+        let ids: Vec<String> = a.docs.iter().filter(|d| d.selected).map(|d| d.id.clone()).collect();
         let count = a.count;
         let p = settings::prefs();
         let base = p.ai_base_url.trim().to_string();
@@ -917,7 +999,7 @@ fn generate_ai(base: &str, key: &str, model: &str, source: &str, count: u32) -> 
     if base.is_empty() { return Err("接口地址为空".into()) }
     let url = if base.ends_with("/chat/completions") { base.to_string() } else { format!("{base}/chat/completions") };
     let system = format!(
-        "你是 Quiet.Next 的认知制卡引擎。把用户提供的笔记材料拆成适合间隔重复的原子问答卡片。\n\
+        "你是 QuietNext 的认知制卡引擎。把用户提供的笔记材料拆成适合间隔重复的原子问答卡片。\n\
          规则：一张卡片只考一个事实；问题短而明确；答案简洁；优先核心定义、机制、易错点；不要编造材料中没有的事实；材料不足时少出卡。\n\
          生成不超过 {count} 张卡片，使用材料本身的语言。\n\
          只输出 JSON，不要 Markdown 代码块或解释：{{\"cards\":[{{\"front\":\"问题\",\"back\":\"答案\"}}]}}"

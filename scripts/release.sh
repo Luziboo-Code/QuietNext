@@ -16,17 +16,17 @@ case "$target" in
   *) echo "Unsupported macOS target: $target" >&2; exit 1 ;;
 esac
 # The dist profile (Cargo.toml): LTO, no symbols, line tables in a dSYM.
-binary="${CARGO_TARGET_DIR:-target}/dist/quiet_md"
+binary="${CARGO_TARGET_DIR:-target}/dist/QuietNext"
 if [ -n "${MACOS_TARGET:-}" ]; then
   cargo build --profile dist --locked --target "$target"
-  binary="${CARGO_TARGET_DIR:-target}/$target/dist/quiet_md"
+  binary="${CARGO_TARGET_DIR:-target}/$target/dist/QuietNext"
 else
   cargo build --profile dist --locked
 fi
 lipo "$binary" -verify_arch "$arch"
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 out=$(mktemp -d "$PWD/dist-release.XXXXXX")
-app="$out/quiet.md.app"
+app="$out/QuietNext.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/"
 # Kept beside the package, not in it: resolves the addresses a panic logs
@@ -45,17 +45,17 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleName</key><string>Quiet.md</string>
-<key>CFBundleDisplayName</key><string>Quiet.md</string>
+<key>CFBundleName</key><string>QuietNext</string>
+<key>CFBundleDisplayName</key><string>QuietNext</string>
 <key>CFBundleIdentifier</key><string>com.s1dashu.quietmd</string>
-<key>CFBundleExecutable</key><string>quiet_md</string>
+<key>CFBundleExecutable</key><string>QuietNext</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>$version</string>
 <key>CFBundleVersion</key><string>$version</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>
-<key>NSDocumentsFolderUsageDescription</key><string>Quiet.md 将笔记保存在文稿中的 Quiet.md 文件夹。</string>
+<key>NSDocumentsFolderUsageDescription</key><string>QuietNext 将笔记保存在文稿中的 QuietNext 文件夹。</string>
   <key>CFBundleDocumentTypes</key><array><dict>
     <key>CFBundleTypeName</key><string>Markdown</string>
     <key>CFBundleTypeRole</key><string>Editor</string>

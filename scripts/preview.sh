@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Replace the running hand-test build (dist-preview) with target/release. It
-# runs as dist-preview/Quiet.md Preview.app (so it is never mistaken for the installed app) on the
+# runs as dist-preview/QuietNext Preview.app (so it is never mistaken for the installed app) on the
 # saved preview library, or ~/Documents/Quiet.md. The app initializes the
 # bundled 开始指南 on first launch, just like an installed build.
 # Only this checkout's own binaries are stopped:
@@ -11,12 +11,12 @@ preview_library="${QUIET_MD_HOME:-$(cat dist-preview/library-path 2>/dev/null ||
 # An empty path would put the library in the current directory.
 [ -n "$preview_library" ] || { echo "preview.sh: no preview library" >&2; exit 1; }
 export QUIET_MD_HOME="$preview_library"
-app="$PWD/dist-preview/Quiet.md Preview.app"
-bin="$app/Contents/MacOS/quiet_md"
+app="$PWD/dist-preview/QuietNext Preview.app"
+bin="$app/Contents/MacOS/QuietNext"
 pkill -f "^$bin" || true
 # The bundle's earlier name, from before it said Preview.
-old="$PWD/dist-preview/quiet.md.app"
-pkill -f "^$old/Contents/MacOS/quiet_md" || true
+old="$PWD/dist-preview/QuietNext.app"
+pkill -f "^$old/Contents/MacOS/QuietNext" || true
 sleep 1
 rm -rf "$old"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -30,24 +30,24 @@ for s in 16 32 128 256 512; do
 done
 iconutil -c icns "$iconset" -o "$app/Contents/Resources/app-icon.icns"
 rm -rf "$icon_tmp"
-cp target/release/quiet_md "$bin.bin"
+cp target/release/QuietNext "$bin.bin"
 # Finder launches must use the same library as this script.
-printf '#!/bin/zsh\nexport QUIET_MD_HOME=%q\nexec "${0:A:h}/quiet_md.bin" "$@"\n' "$preview_library" > "$bin"
+printf '#!/bin/zsh\nexport QUIET_MD_HOME=%q\nexec "${0:A:h}/QuietNext.bin" "$@"\n' "$preview_library" > "$bin"
 chmod +x "$bin"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>Quiet.md Preview</string>
-  <key>CFBundleDisplayName</key><string>Quiet.md Preview</string>
+  <key>CFBundleName</key><string>QuietNext Preview</string>
+  <key>CFBundleDisplayName</key><string>QuietNext Preview</string>
   <key>CFBundleIdentifier</key><string>local.quietmd.preview</string>
-  <key>CFBundleExecutable</key><string>quiet_md</string>
+  <key>CFBundleExecutable</key><string>QuietNext</string>
   <key>CFBundleIconFile</key><string>app-icon.icns</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
-  <key>NSDocumentsFolderUsageDescription</key><string>Quiet.md 把文档库放在「文稿」里的 Quiet.md 文件夹。</string>
+  <key>NSDocumentsFolderUsageDescription</key><string>QuietNext 把文档库放在「文稿」里的 QuietNext 文件夹。</string>
   <key>CFBundleDocumentTypes</key><array><dict>
     <key>CFBundleTypeName</key><string>Markdown</string>
     <key>CFBundleTypeRole</key><string>Editor</string>

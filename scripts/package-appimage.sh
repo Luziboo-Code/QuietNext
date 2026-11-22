@@ -14,7 +14,7 @@ curl --fail --location --retry 3 --proto '=https' --proto-redir '=https' \
   https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage -o "$tool"
 echo "c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d  $tool" | sha256sum -c -
 chmod +x "$tool"
-appdir="$stage/Quiet.md.AppDir"
+appdir="$stage/QuietNext.AppDir"
 mkdir -p "$appdir/usr/share/doc/quiet-md"
 cp LICENSE THIRD_PARTY.md "$appdir/usr/share/doc/quiet-md/"
 mkdir -p "$appdir/usr/share/X11"
@@ -27,14 +27,14 @@ convert assets/branding/app-icon.png -resize 512x512 "$stage/com.s1dashu.quietmd
 export APPIMAGE_EXTRACT_AND_RUN=1
 export OUTPUT="$out/quiet-md-$version-x86_64.AppImage"
 export VERSION="$version"
-"$tool" --appdir "$appdir" --executable "${CARGO_TARGET_DIR:-target}/dist/quiet_md" \
+"$tool" --appdir "$appdir" --executable "${CARGO_TARGET_DIR:-target}/dist/QuietNext" \
   --desktop-file packaging/linux/com.s1dashu.quietmd.desktop \
   --icon-file "$stage/com.s1dashu.quietmd.png" --custom-apprun packaging/linux/AppRun --output appimage
 chmod +x "$OUTPUT"
 # Inspect the packaged payload, not only the original executable.
 (cd "$stage" && "$OUTPUT" --appimage-extract >/dev/null)
 test -x "$stage/squashfs-root/AppRun"
-payload="$stage/squashfs-root/usr/bin/quiet_md"
+payload="$stage/squashfs-root/usr/bin/QuietNext"
 LD_LIBRARY_PATH="$stage/squashfs-root/usr/lib" ldd "$payload" > "$OUTPUT.libraries.txt"
 if grep -q 'not found' "$OUTPUT.libraries.txt"; then cat "$OUTPUT.libraries.txt" >&2; exit 1; fi
 objdump -T "$payload" | sed -n 's/.*(GLIBC_\([0-9.]*\)).*/\1/p' | sort -Vu > "$OUTPUT.glibc.txt"

@@ -32,11 +32,11 @@ BEGIN
   BEGIN
     BLOCK "040904B0"
     BEGIN
-      VALUE "FileDescription", "Quiet.Next\0"
+      VALUE "FileDescription", "QuietNext\0"
       VALUE "FileVersion", "{version}\0"
-      VALUE "ProductName", "Quiet.Next\0"
+      VALUE "ProductName", "QuietNext\0"
       VALUE "ProductVersion", "{version}\0"
-      VALUE "OriginalFilename", "quiet_md.exe\0"
+      VALUE "OriginalFilename", "QuietNext.exe\0"
     END
   END
   BLOCK "VarFileInfo"
@@ -50,7 +50,7 @@ END
     std::fs::write(&source, rc).unwrap();
     let status = std::process::Command::new("rc.exe").arg("/nologo").arg("/fo").arg(&resource).arg(&source).status().expect("Windows SDK rc.exe is required; build from a Visual Studio developer shell");
     assert!(status.success(), "Windows resource compilation failed");
-    println!("cargo:rustc-link-arg-bin=quiet_md={}", resource.display());
+    println!("cargo:rustc-link-arg-bin=QuietNext={}", resource.display());
 }
 
 /// Files under assets/ the binary never reads: source art, the preview's dev

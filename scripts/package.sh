@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Build, sign, notarize and package Quiet.md as a .dmg for distribution.
+# Build, sign, notarize and package QuietNext as a .dmg for distribution.
 #
 #   scripts/package.sh [version]
 #
@@ -26,7 +26,7 @@ sign_id=${CODESIGN_ID:-$(security find-identity -v -p codesigning | sed -n 's/.*
 }
 
 out=dist
-app="$out/quiet.md.app"
+app="$out/QuietNext.app"
 dmg="$out/quiet.md-$version.dmg"
 
 echo "== 编译 $version"
@@ -35,7 +35,7 @@ cargo build --profile dist --locked
 echo "== 组装 $app"
 rm -rf "$out"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-cp target/dist/quiet_md "$app/Contents/MacOS/quiet_md"
+cp target/dist/QuietNext "$app/Contents/MacOS/QuietNext"
 # .icns：Finder 和 Dock 用图标文件，不是裸 PNG。
 iconset=$(mktemp -d)/icon.iconset
 mkdir -p "$iconset"
@@ -48,17 +48,17 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>Quiet.md</string>
-  <key>CFBundleDisplayName</key><string>Quiet.md</string>
+  <key>CFBundleName</key><string>QuietNext</string>
+  <key>CFBundleDisplayName</key><string>QuietNext</string>
   <key>CFBundleIdentifier</key><string>$bundle_id</string>
-  <key>CFBundleExecutable</key><string>quiet_md</string>
+  <key>CFBundleExecutable</key><string>QuietNext</string>
   <key>CFBundleIconFile</key><string>app-icon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$version</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
-  <key>NSDocumentsFolderUsageDescription</key><string>Quiet.md 把文档库放在「文稿」里的 Quiet.md 文件夹。</string>
+  <key>NSDocumentsFolderUsageDescription</key><string>QuietNext 把文档库放在「文稿」里的 QuietNext 文件夹。</string>
   <key>CFBundleDocumentTypes</key><array><dict>
     <key>CFBundleTypeName</key><string>Markdown</string>
     <key>CFBundleTypeRole</key><string>Editor</string>
@@ -83,7 +83,7 @@ rm -rf "$out/dmg-root"
 mkdir -p "$out/dmg-root"
 cp -R "$app" "$out/dmg-root/"
 ln -s /Applications "$out/dmg-root/Applications"
-hdiutil create -quiet -volname "Quiet.md" -srcfolder "$out/dmg-root" -ov -format UDZO "$dmg"
+hdiutil create -quiet -volname "QuietNext" -srcfolder "$out/dmg-root" -ov -format UDZO "$dmg"
 rm -rf "$out/dmg-root"
 codesign --force --timestamp --sign "$sign_id" "$dmg"
 

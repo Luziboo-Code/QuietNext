@@ -2,6 +2,7 @@
 name = "quiet_md"
 version = "0.1.14"
 edition = "2024"
+autobins = false
 description = "A fast, local-first rich text notes app for macOS and Windows, drawn with GPUI and compatible with Feishu DocxXML"
 license = "MIT"
 readme = "README.md"
@@ -17,6 +18,10 @@ categories = ["text-editors"]
 [features]
 devtools = []
 datatable = []
+
+[[bin]]
+name = "QuietNext"
+path = "src/main.rs"
 
 # `fdl_core` is the GPUI-free document engine; plain `cargo test` covers both.
 [workspace]

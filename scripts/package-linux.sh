@@ -13,11 +13,11 @@ mkdir -p dist/linux
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/$name/bin" "$stage/$name/share/applications" "$stage/$name/share/icons/hicolor/512x512/apps"
-install -m755 "${CARGO_TARGET_DIR:-target}/dist/quiet_md" "$stage/$name/bin/quiet_md"
+install -m755 "${CARGO_TARGET_DIR:-target}/dist/QuietNext" "$stage/$name/bin/QuietNext"
 install -m644 packaging/linux/com.s1dashu.quietmd.desktop "$stage/$name/share/applications/"
 "$resize" assets/branding/app-icon.png -resize 512x512 "$stage/$name/share/icons/hicolor/512x512/apps/com.s1dashu.quietmd.png"
 install -m644 LICENSE "$stage/$name/"
-ldd "$stage/$name/bin/quiet_md" > "$stage/$name/runtime-libraries.txt"
+ldd "$stage/$name/bin/QuietNext" > "$stage/$name/runtime-libraries.txt"
 if grep -q 'not found' "$stage/$name/runtime-libraries.txt"; then cat "$stage/$name/runtime-libraries.txt" >&2; exit 1; fi
 tar -C "$stage" -czf "dist/linux/$name.tar.gz" "$name"
 (cd dist/linux && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")

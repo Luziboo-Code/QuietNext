@@ -294,7 +294,7 @@ pub(crate) fn ubiquitous(path: &Path) -> bool {
     }
 }
 
-/// A path as people know it: 文稿 › Quiet.Next, iCloud 云盘 › Notes, Dropbox › …;
+/// A path as people know it: 文稿 › QuietNext, iCloud 云盘 › Notes, Dropbox › …;
 /// deep ones keep their first and last two names.
 /// Where a found folder lives, in a few words: its app's iCloud container
 /// reads as iCloud 云盘, anything else as its short path.
@@ -330,10 +330,10 @@ fn short_path(p: &Path) -> String {
 
 /// A picked folder as a library, used as it is: its Markdown and DocxXML
 /// files show up as documents (#282). Only the home folder and a disk's
-/// root get a Quiet.Next folder inside; scanning all of either is never meant.
+/// root get a QuietNext folder inside; scanning all of either is never meant.
 pub(crate) fn library_in(dir: PathBuf) -> PathBuf {
     let broad = dir.parent().is_none() || dirs::home_dir().is_some_and(|h| h == dir);
-    if broad && !crate::store::Store::is_library(&dir) { dir.join("Quiet.Next") } else { dir }
+    if broad && !crate::store::Store::is_library(&dir) { dir.join("QuietNext") } else { dir }
 }
 
 // ---- the view
@@ -616,7 +616,7 @@ impl Onboarding {
         div().size_full().flex().flex_col().items_center().justify_center().px(px(48.)).pb(px(40.))
             .child(div().flex().flex_col().items_center().gap(px(12.))
                 .child(div().size(px(64.)).rounded(px(15.)).overflow_hidden().shadow(theme::shadow_card()).child(img(crate::settings::about_icon()).size_full()))
-                .child(lifted(over, 56., 64., true, false, "Quiet.Next"))
+                .child(lifted(over, 56., 64., true, false, "QuietNext"))
                 .child(lifted(over, 15., 23., false, true, tr("一个又快又安静的本地笔记应用。", "A fast, quiet, local notes app."))))
             .child(div().w_full().max_w(px(560.)).mt(px(40.)).flex().flex_col().gap(px(12.))
                 .child(lang)
@@ -908,9 +908,9 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("notes.md"), "# Notes").unwrap();
         assert_eq!(super::library_in(dir.clone()), dir);
-        assert_eq!(super::library_in("/".into()), Path::new("/Quiet.Next"));
+        assert_eq!(super::library_in("/".into()), Path::new("/QuietNext"));
         let home = dirs::home_dir().unwrap();
-        assert_eq!(super::library_in(home.clone()), home.join("Quiet.Next"));
+        assert_eq!(super::library_in(home.clone()), home.join("QuietNext"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

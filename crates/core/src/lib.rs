@@ -1,4 +1,4 @@
-//! Quiet.Next's document engine, free of any UI: the block model, DocxXML
+//! QuietNext's document engine, free of any UI: the block model, DocxXML
 //! reading and writing, the editing core with undo, the library on disk,
 //! and Markdown / HTML import plus Markdown export.
 

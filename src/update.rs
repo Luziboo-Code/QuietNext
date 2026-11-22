@@ -141,7 +141,7 @@ pub fn check(manual: bool, cx: &mut App) {
 
 /// A toast in the front window: the version and the sidebar's 更新 pill.
 fn announce(version: &str, cx: &mut App) {
-    let msg = crate::localized_format!("Quiet.Next {} 已发布，点侧栏顶部的「更新」安装", "Quiet.Next {} is available. Click Update at the top of the sidebar.", version);
+    let msg = crate::localized_format!("QuietNext {} 已发布，点侧栏顶部的「更新」安装", "QuietNext {} is available. Click Update at the top of the sidebar.", version);
     let window = cx.active_window().or_else(|| cx.windows().first().copied()).and_then(|w| w.downcast::<crate::app::Workspace>());
     if let Some(w) = window { let _ = w.update(cx, |ws, _, cx| ws.show_toast_kind(crate::ui::ToastKind::Info, &msg, cx)); }
 }
@@ -363,10 +363,10 @@ pub fn prompt(window: &mut Window, cx: &mut Context<crate::app::Workspace>) -> O
     let state = state(cx);
     if blocking(cx) {
         let State::Ready(m, _) = &state else { return None };
-        let body = crate::localized_format!("这个版本需要更新后才能继续使用。{} 已下载好，重启即可完成更新，打开的文档会先保存。", "This version must be updated before you continue. Version {} is downloaded; Quiet.Next restarts to finish, and open documents are saved first.", m.version);
+        let body = crate::localized_format!("这个版本需要更新后才能继续使用。{} 已下载好，重启即可完成更新，打开的文档会先保存。", "This version must be updated before you continue. Version {} is downloaded; QuietNext restarts to finish, and open documents are saved first.", m.version);
         let dialog = ui::dialog("forced-update-dialog").w(px(440.)).px(px(24.)).pt(px(20.)).pb(px(24.))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(div().text_size(px(15.)).line_height(px(22.)).font_weight(FontWeight::SEMIBOLD).child(ui::ui_para(tr("需要更新 Quiet.Next", "Quiet.Next needs to update"))))
+            .child(div().text_size(px(15.)).line_height(px(22.)).font_weight(FontWeight::SEMIBOLD).child(ui::ui_para(tr("需要更新 QuietNext", "QuietNext needs to update"))))
             .children(f.message().map(|t| div().mt(px(8.)).text_size(px(13.)).line_height(px(20.)).child(ui::ui_para(t.to_string()))))
             .child(div().mt(px(8.)).text_size(px(13.)).line_height(px(20.)).text_color(Theme::text_caption()).child(ui::ui_para(body)))
             .child(div().mt(px(24.)).flex().justify_end()
@@ -590,7 +590,7 @@ fn start_installer(new: &Path) -> Result<(), String> {
     let app = app_bundle().ok_or_else(|| crate::settings::tr("找不到正在运行的应用", "Could not find the running app").to_string())?;
     let parent = app.parent().ok_or("parent")?;
     if app.to_string_lossy().contains("/AppTranslocation/") {
-        return Err(crate::settings::tr("请先把 Quiet.Next 移到「应用程序」文件夹，再更新", "Move Quiet.Next to the Applications folder first, then update").into());
+        return Err(crate::settings::tr("请先把 QuietNext 移到「应用程序」文件夹，再更新", "Move QuietNext to the Applications folder first, then update").into());
     }
     // The folder must take the new bundle (a standard user cannot write to /Applications).
     let probe = parent.join(format!(".quiet.md-update-{}", fdl_core::vfs::process_id()));
@@ -627,7 +627,7 @@ fn appimage() -> Option<PathBuf> {
     let image = PathBuf::from(std::env::var_os("APPIMAGE")?).canonicalize().ok()?;
     let appdir = PathBuf::from(std::env::var_os("APPDIR")?).canonicalize().ok()?;
     let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
-    let payload = appdir.join("usr/bin/quiet_md").canonicalize().ok()?;
+    let payload = appdir.join("usr/bin/QuietNext").canonicalize().ok()?;
     (image.is_file() && exe == payload && !image.starts_with(&appdir)).then_some(image)
 }
 

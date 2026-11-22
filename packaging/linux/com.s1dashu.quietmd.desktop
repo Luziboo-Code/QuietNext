@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Quiet.Next
+Name=QuietNext
 Comment=Local notes
-Exec=quiet_md %F
+Exec=QuietNext %F
 Icon=com.s1dashu.quietmd
 Terminal=false
 Categories=Office;TextEditor;

@@ -32,20 +32,20 @@ pub fn set_menus(cx: &mut App) {
     use crate::settings::tr;
     cx.set_menus(vec![
         Menu {
-            name: "Quiet.Next".into(),
+            name: "QuietNext".into(),
             items: vec![
-                MenuItem::action(tr("关于 Quiet.Next", "About Quiet.Next"), OpenAbout),
+                MenuItem::action(tr("关于 QuietNext", "About QuietNext"), OpenAbout),
                 MenuItem::action(tr("检查更新…", "Check for Updates…"), CheckForUpdates),
                 MenuItem::separator(),
                 MenuItem::action(tr("设置…", "Settings…"), OpenSettings),
                 MenuItem::separator(),
                 MenuItem::os_submenu(tr("服务", "Services"), SystemMenuType::Services),
                 MenuItem::separator(),
-                MenuItem::action(tr("隐藏 Quiet.Next", "Hide Quiet.Next"), HideApp),
+                MenuItem::action(tr("隐藏 QuietNext", "Hide QuietNext"), HideApp),
                 MenuItem::action(tr("隐藏其他", "Hide Others"), HideOthers),
                 MenuItem::action(tr("全部显示", "Show All"), ShowAll),
                 MenuItem::separator(),
-                MenuItem::action(tr("退出 Quiet.Next", "Quit Quiet.Next"), Quit),
+                MenuItem::action(tr("退出 QuietNext", "Quit QuietNext"), Quit),
             ],
             disabled: false,
         },
