@@ -478,8 +478,8 @@ impl Workspace {
                     .on_click(cx.listener(|w, _, _, cx| { if let Some(s) = &mut w.review.session { s.revealed = true; } cx.notify(); })))
         };
         div().flex_1().min_w_0().h_full().flex().flex_col().child(progress)
-            .child(div().id("rev-session-scroll").flex_1().min_h_0().overflow_y_scroll().px(px(32.)).py(px(24.)).flex().flex_col().items_center()
-                .child(div().my_auto().w_full().max_w(px(680.)).flex().flex_col().gap(px(18.)).child(panel).child(actions)))
+            .child(div().id("rev-session-scroll").flex_1().min_h_0().overflow_y_scroll().px(px(32.)).pt(px(120.)).pb(px(32.)).flex().flex_col().items_center()
+                .child(div().w_full().max_w(px(680.)).flex().flex_col().gap(px(18.)).child(panel).child(actions)))
             .into_any_element()
     }
 
