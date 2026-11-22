@@ -136,6 +136,12 @@ pub struct Preferences {
     /// 复习: target memory rate, 85 / 90 / 95.
     #[serde(default = "review_retention_default")]
     pub review_retention: u32,
+    /// 复习 › AI 生成: an OpenAI-compatible endpoint (…/v1).
+    #[serde(default = "ai_base_default")]
+    pub ai_base_url: String,
+    /// 复习 › AI 生成: the chat model.
+    #[serde(default = "ai_model_default")]
+    pub ai_model: String,
     /// 外观 › 界面字体: the family the sidebar, menus and settings are drawn in
     /// (a system family name); empty is the platform's own sans.
     pub ui_family: String,
@@ -187,11 +193,13 @@ fn system_lang() -> Lang {
 fn review_new_default() -> u32 { 20 }
 fn review_max_default() -> u32 { 200 }
 fn review_retention_default() -> u32 { 90 }
+fn ai_base_default() -> String { "https://api.openai.com/v1".into() }
+fn ai_model_default() -> String { "gpt-4o-mini".into() }
 
 impl Default for Preferences {
     fn default() -> Self {
         let lang = system_lang();
-        Preferences { theme: String::new(), feishu: true, english: lang != Lang::Zh, language: lang.code().into(), remote_images: true, quick_hotkey: true, auto_update: true, appearance: String::new(), seen_version: String::new(), motion: String::new(), new_default: String::new(), last_new: String::new(), search_engine: String::new(), start_home: false, browser: String::new(), opaque_window: false, ui_font: String::new(), page_width: String::new(), review_new_per_day: 20, review_max_per_day: 200, review_retention: 90, ui_family: String::new(), doc_family: String::new(), migrate_later: 0, find_regex: false, backspace_to_title: true }
+        Preferences { theme: String::new(), feishu: true, english: lang != Lang::Zh, language: lang.code().into(), remote_images: true, quick_hotkey: true, auto_update: true, appearance: String::new(), seen_version: String::new(), motion: String::new(), new_default: String::new(), last_new: String::new(), search_engine: String::new(), start_home: false, browser: String::new(), opaque_window: false, ui_font: String::new(), page_width: String::new(), review_new_per_day: 20, review_max_per_day: 200, review_retention: 90, ai_base_url: ai_base_default(), ai_model: ai_model_default(), ui_family: String::new(), doc_family: String::new(), migrate_later: 0, find_regex: false, backspace_to_title: true }
     }
 }
 
@@ -1263,6 +1271,7 @@ impl Workspace {
                 .child(button(id.1, "+").on_click(cx.listener(move |w, _, _, cx| if minus { w.change_review_new(1, cx) } else { w.change_review_max(1, cx) })))
         };
         let sel = match p.review_retention { 85 => 0, 95 => 2, _ => 1 };
+        let field = |e: Entity<TextField>| div().w(px(260.)).h(px(30.)).px(px(8.)).flex().items_center().rounded(px(8.)).bg(Theme::fill_hover()).child(e);
         div().w_full().flex().flex_col().gap(px(28.))
             .child(group(None, vec![
                 row(tr("每日新卡片", "New cards per day"), desc(tr("每天最多引入多少张新卡片；0 表示不引入新卡片。", "How many new cards to introduce each day; 0 turns new cards off.")),
@@ -1275,9 +1284,41 @@ impl Workspace {
                 row(tr("打开复习", "Open review"), desc(tr("查看卡片和今天的复习进度。", "See your cards and today's progress.")),
                     button("open-review", tr("打开", "Open")).on_click(cx.listener(|w, _, _, cx| w.show_view(View::Review, cx)))).into_any_element(),
             ]))
+            .child(group(Some(tr("AI 生成卡片", "AI card generation")), vec![
+                row(tr("接口地址", "Endpoint"), desc(tr("OpenAI 兼容接口，例如 https://api.openai.com/v1 或 https://api.deepseek.com。", "An OpenAI-compatible endpoint, such as https://api.openai.com/v1 or https://api.deepseek.com.")),
+                    field(self.ai_base_field.clone())).into_any_element(),
+                row(tr("模型", "Model"), desc(tr("例如 gpt-4o-mini、deepseek-chat。", "For example gpt-4o-mini or deepseek-chat.")),
+                    field(self.ai_model_field.clone())).into_any_element(),
+                row(tr("API 密钥", "API key"), desc(tr("只保存在这台电脑上，不随文档库同步；仅发送给你填写的接口。", "Stored on this computer only, never synced with the library; sent only to the endpoint you enter.")),
+                    field(self.ai_key_field.clone())).into_any_element(),
+                row(tr("保存 AI 设置", "Save AI settings"), None,
+                    button("save-ai-settings", tr("保存", "Save")).on_click(cx.listener(|w, _, _, cx| w.save_ai_settings(cx)))).into_any_element(),
+            ]))
             .child(div().px(px(4.)).text_size(px(theme::ui_font_small())).line_height(px(theme::ui_font_small() + 5.)).text_color(Theme::text_caption())
                 .child(tr("卡片保存在文档库的 .quiet/review.json 中，只在本机使用。", "Cards live in the library's .quiet/review.json and stay on this computer.")))
             .into_any_element()
+    }
+
+    pub(crate) fn save_ai_settings(&mut self, cx: &mut Context<Self>) {
+        let base = self.ai_base_field.read(cx).text.trim().to_string();
+        let model = self.ai_model_field.read(cx).text.trim().to_string();
+        let key = self.ai_key_field.read(cx).text.trim().to_string();
+        if base.is_empty() || model.is_empty() {
+            self.show_toast_kind(ui::ToastKind::Error, tr("请填写接口地址和模型", "Enter the endpoint and model"), cx);
+            return;
+        }
+        let mut p = prefs();
+        p.ai_base_url = base;
+        p.ai_model = model;
+        if let Err(e) = save(&p) {
+            self.show_toast_kind(ui::ToastKind::Error, &format!("{}{e}", tr("设置保存失败：", "Could not save settings: ")), cx);
+            return;
+        }
+        if let Err(e) = crate::review::set_ai_key(&key) {
+            self.show_toast_kind(ui::ToastKind::Error, &format!("{}{e}", tr("密钥保存失败：", "Could not save the key: ")), cx);
+            return;
+        }
+        self.show_toast(tr("AI 设置已保存", "AI settings saved"), cx);
     }
 
     /// 版本历史: the retention count is stored in the library, so every

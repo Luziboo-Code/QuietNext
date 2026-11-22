@@ -293,6 +293,10 @@ pub struct Workspace {
     pub font_anchors: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<&'static str, Bounds<Pixels>>>>,
     /// 快捷键's filter field.
     pub settings_filter: Entity<TextField>,
+    /// 设置 › 复习 › AI 配置.
+    pub ai_base_field: Entity<TextField>,
+    pub ai_model_field: Entity<TextField>,
+    pub ai_key_field: Entity<TextField>,
     native_sidebar: crate::native_header::NativeSidebar,
     pub store: SharedStore,
     pub entries: Vec<Entry>,
@@ -456,6 +460,28 @@ impl Workspace {
             f.placeholder_color = Theme::text_disabled();
             f
         });
+        let p = crate::settings::prefs();
+        let ai_base_field = cx.new(|cx| {
+            let mut f = TextField::new("https://api.openai.com/v1", cx);
+            f.size = 12.;
+            f.line_height = 18.;
+            f.set_text(&p.ai_base_url, cx);
+            f
+        });
+        let ai_model_field = cx.new(|cx| {
+            let mut f = TextField::new("gpt-4o-mini", cx);
+            f.size = 12.;
+            f.line_height = 18.;
+            f.set_text(&p.ai_model, cx);
+            f
+        });
+        let ai_key_field = cx.new(|cx| {
+            let mut f = TextField::new(crate::settings::tr("未填写", "Not set"), cx);
+            f.size = 12.;
+            f.line_height = 18.;
+            f.set_text(&crate::review::ai_key(), cx);
+            f
+        });
         let subs = vec![
             cx.subscribe(&settings_filter, |_, _, ev: &TextFieldEvent, cx| if matches!(ev, TextFieldEvent::Changed) { cx.notify(); }),
             cx.observe_window_bounds(window, |this, window, cx| crate::quick_note::remember(window, this.quick_note, cx)),
@@ -576,6 +602,9 @@ impl Workspace {
             font_menu: None,
             font_anchors: Default::default(),
             settings_filter,
+            ai_base_field,
+            ai_model_field,
+            ai_key_field,
             store,
             entries,
             current: None,
@@ -682,6 +711,7 @@ impl Workspace {
         }
         if std::env::var_os("QUIET_MD_REVIEW").is_some() { ws.view = View::Review; }
         if std::env::var_os("QUIET_MD_REVIEW_SESSION").is_some() { ws.view = View::Review; ws.start_review(cx); }
+        if std::env::var_os("QUIET_MD_REVIEW_AI").is_some() { ws.view = View::Review; ws.open_ai(window, cx); }
         if let Some(v) = std::env::var_os("QUIET_MD_SETTINGS") {
             let page = match v.to_string_lossy().as_ref() {
                 "review" => crate::settings::Page::Review,
