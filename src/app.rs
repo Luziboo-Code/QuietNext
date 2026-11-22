@@ -795,7 +795,8 @@ impl Workspace {
             if let Some(m) = &meta {
                 e.created = m.created;
                 e.info = m.info;
-                if !e.board_file && !e.table_file { e.set_read_only(m.reading, cx); }
+                e.locked = m.locked;
+                if !e.board_file && !e.table_file { e.set_read_only(m.reading || m.locked, cx); }
                 // a build without 数据表 shows a table file's page as a placeholder, not to be edited
                 if e.table_file && !crate::DATATABLE { e.set_read_only(true, cx); }
             }

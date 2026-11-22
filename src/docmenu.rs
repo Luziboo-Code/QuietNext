@@ -134,6 +134,26 @@ impl Workspace {
         }
     }
 
+    /// 锁定编辑: the open document becomes read only until unlocked.
+    pub fn toggle_lock(&mut self, cx: &mut Context<Self>) {
+        self.close_doc_menu(cx);
+        let Some(id) = self.current.clone() else { return };
+        let next = !self.entries.iter().find(|e| e.id == id).is_some_and(|e| e.meta.locked);
+        if let Some(e) = self.entries.iter_mut().find(|e| e.id == id) {
+            e.meta.locked = next;
+        }
+        let _ = self.store.update_meta(&id, |m| m.locked = next);
+        let reading = self.reading();
+        if let Some(ed) = &self.editor {
+            ed.update(cx, |e, cx| {
+                e.locked = next;
+                e.set_read_only(next || reading, cx);
+            });
+        }
+        self.show_toast_kind(crate::ui::ToastKind::Info, if next { crate::settings::text("文档已锁定") } else { crate::settings::text("已取消锁定") }, cx);
+        cx.notify();
+    }
+
     pub(crate) fn render_doc_menu(&self, window: &Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
         if !self.doc_menu {
             return vec![];
@@ -143,11 +163,15 @@ impl Workspace {
         let pinned = entry.is_some_and(|e| e.meta.pinned);
         let starred = entry.is_some_and(|e| e.meta.starred > 0);
         let width = entry.and_then(|e| e.meta.width).unwrap_or_else(|| crate::settings::prefs().page_width());
+        let locked = entry.is_some_and(|e| e.meta.locked);
         let refs_shown = !entry.is_some_and(|e| e.meta.refs_hidden);
         // An open board isn't the page: no page width, find in its text or
         // editor shortcuts; a standalone board file has no Markdown or
         // references either
         let (board, board_file) = self.editor.as_ref().map_or((false, false), |e| { let e = e.read(cx); (e.board_open(), e.board_file) });
+        let table_file = self.editor.as_ref().is_some_and(|e| e.read(cx).table_file);
+        let lockable = !board && !board_file && !table_file;
+        let shift_items = if lockable { 1 } else { 0 };
         let sub = self.doc_sub;
         let hover_sub = |s: Option<DocSub>| {
             cx.listener(move |w: &mut Workspace, hovered: &bool, _, cx| {
@@ -181,6 +205,11 @@ impl Workspace {
                     w.close_doc_menu(cx);
                 }
             }))
+            .when(lockable, |d| d.child(
+                menu_item("dm-lock", "ft-lock", if locked { crate::settings::text("解锁编辑") } else { crate::settings::text("锁定编辑") }, false, false)
+                    .on_hover(hover_sub(None))
+                    .on_click(cx.listener(|w, _, _, cx| w.toggle_lock(cx))),
+            ).child(divider()))
             .when(!board, |d| d.child(
                 menu_item("dm-width", "page-width", crate::settings::text("页宽设置"), true, sub == Some(DocSub::Width))
                     .on_hover(hover_sub(Some(DocSub::Width))),
@@ -288,12 +317,13 @@ impl Workspace {
         // the items and dividers above a submenu's item that aren't shown
         let hidden = if board { (2, 2) } else { (0, 0) };
         let sub_el = match sub {
-            Some(DocSub::Width) => Some((item_top(0, 0) - 1. - PAD, self.width_panel(width, cx).child(recorder()).into_any_element())),
+            Some(DocSub::Width) => Some((item_top(shift_items, shift_items) - 1. - PAD, self.width_panel(width, cx).child(recorder()).into_any_element())),
             // Level the submenu's first item with 下载为.
             Some(DocSub::Download) => Some((
-                item_top(6 - hidden.0, 3 - hidden.1) - 1. - PAD,
+                item_top(6 + shift_items - hidden.0, 3 + shift_items - hidden.1) - 1. - PAD,
                 {
                     let pdf = id.clone();
+                    let md = id.clone();
                     popover()
                         .id("dm-download-menu")
                         .occlude()
@@ -302,12 +332,16 @@ impl Workspace {
                         .py(px(PAD))
                         .child(recorder())
                         .when(crate::printing::SUPPORTED, |d| d.child(sub_item("dm-pdf", "PDF").on_click(cx.listener(move |w, _, window, cx| w.export_pdf(&pdf, window, cx)))))
-                        .child(sub_item("dm-md", "Markdown").on_click(cx.listener(move |w, _, _, cx| w.open_export_md(&id, cx))))
+                        .child(sub_item("dm-md", "Markdown").on_click(cx.listener(move |w, _, _, cx| w.open_export_md(&md, cx))))
+                        .when(crate::printing::IMAGE_SUPPORTED, |d| d.child({
+                            let png = id.clone();
+                            sub_item("dm-image", crate::settings::text("图片")).on_click(cx.listener(move |w, _, window, cx| w.export_image(&png, window, cx)))
+                        }))
                         .into_any_element()
                 },
             )),
             Some(DocSub::More) => Some((
-                if crate::printing::SUPPORTED { item_top(10 - hidden.0, 6 - hidden.1) } else { item_top(9 - hidden.0, 5 - hidden.1) } - 1. - PAD,
+                if crate::printing::SUPPORTED { item_top(10 + shift_items - hidden.0, 6 + shift_items - hidden.1) } else { item_top(9 + shift_items - hidden.0, 5 + shift_items - hidden.1) } - 1. - PAD,
                 popover()
                     .id("dm-more-menu")
                     .occlude()

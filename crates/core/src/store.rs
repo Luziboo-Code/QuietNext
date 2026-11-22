@@ -56,6 +56,9 @@ pub struct Meta {
     /// 阅读模式, remembered per document like the page width.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reading: bool,
+    /// 锁定编辑: the document is read only until it is unlocked from "…".
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub locked: bool,
     /// The 文档信息 row under the title.
     #[serde(default, skip_serializing_if = "InfoRow::is_default")]
     pub info: InfoRow,
@@ -140,7 +143,7 @@ impl Default for Meta {
         Self {
             folder: None, root_order: None, created: 0, modified: 0, pinned: false, opened: 0,
             width: None, catalogue_closed: true,
-            parent: None, order: 0, starred: 0, reading: false,
+            parent: None, order: 0, starred: 0, reading: false, locked: false,
             info: InfoRow::default(), refs_hidden: false,
             markdown: false, path: None, name: None, rel: String::new(), kind: DocKind::Doc,
         }
@@ -431,6 +434,8 @@ struct Attached {
     catalogue_closed: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     reading: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    locked: bool,
     #[serde(default, skip_serializing_if = "InfoRow::is_default")]
     info: InfoRow,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -442,11 +447,11 @@ type DiskIndex = BTreeMap<String, Attached>;
 impl Attached {
     fn of(id: &str, m: &Meta) -> Self {
         Attached { id: id.to_string(), created: m.created, modified: m.modified, pinned: m.pinned, starred: m.starred, order: m.order, root_order: m.root_order,
-            width: m.width, catalogue_closed: m.catalogue_closed, reading: m.reading, info: m.info, refs_hidden: m.refs_hidden }
+            width: m.width, catalogue_closed: m.catalogue_closed, reading: m.reading, locked: m.locked, info: m.info, refs_hidden: m.refs_hidden }
     }
     fn meta(&self) -> Meta {
         Meta { created: self.created, modified: self.modified, pinned: self.pinned, starred: self.starred, order: self.order, root_order: self.root_order,
-            width: self.width, catalogue_closed: self.catalogue_closed, reading: self.reading, info: self.info, refs_hidden: self.refs_hidden, ..Default::default() }
+            width: self.width, catalogue_closed: self.catalogue_closed, reading: self.reading, locked: self.locked, info: self.info, refs_hidden: self.refs_hidden, ..Default::default() }
     }
 }
 

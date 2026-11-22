@@ -79,6 +79,11 @@ impl Workspace {
         self.current.as_ref().and_then(|id| self.entries.iter().find(|e| &e.id == id)).is_some_and(|e| e.meta.reading)
     }
 
+    /// 锁定编辑 is on for the open document.
+    pub fn locked(&self) -> bool {
+        self.current.as_ref().and_then(|id| self.entries.iter().find(|e| &e.id == id)).is_some_and(|e| e.meta.locked)
+    }
+
     pub fn set_mode(&mut self, reading: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.mode_menu = false;
         cx.notify();
@@ -94,8 +99,10 @@ impl Workspace {
             e.meta.reading = reading;
         }
         let _ = self.store.update_meta(&id, |m| m.reading = reading);
+        let locked = self.locked();
         if let Some(ed) = &self.editor {
-            ed.update(cx, |e, cx| e.set_read_only(reading, cx));
+            ed.update(cx, |e, cx| e.set_read_only(reading || locked, cx));
+            ed.update(cx, |e, _| e.locked = locked);
             { let f = ed.read(cx).focus.clone(); window.focus(&f, cx); }
         }
         self.show_toast_kind(ToastKind::Info, if reading { crate::settings::text("已切换为阅读模式") } else { crate::settings::text("已切换为编辑模式") }, cx);

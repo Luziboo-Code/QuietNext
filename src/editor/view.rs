@@ -251,6 +251,8 @@ pub struct Editor {
     pub created: u64,
     /// 阅读模式 (`reading.rs`), and the document as it was when it began.
     pub read_only: bool,
+    /// 锁定编辑: read only until the "…" menu unlocks it.
+    pub locked: bool,
     /// A Markdown file: only what Markdown can hold is offered (no colors,
     /// alignment, callouts, columns, add-on blocks, icon or cover).
     pub markdown: bool,
@@ -474,6 +476,7 @@ impl Editor {
             modified,
             created: modified,
             read_only: false,
+            locked: false,
             markdown: false,
             board_file: false,
             ro_doc: None,

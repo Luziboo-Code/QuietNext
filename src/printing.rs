@@ -10,10 +10,13 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 pub const SUPPORTED: bool = cfg!(any(target_os = "macos", target_os = "windows"));
+/// 下载为 → 图片: WebView2's DevTools capture lays the whole page out as PNG.
+pub const IMAGE_SUPPORTED: bool = cfg!(target_os = "windows");
 
 pub enum Job {
     #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))] // No backend elsewhere.
     Pdf(PathBuf),
+    Image(PathBuf),
     Print,
 }
 
@@ -204,9 +207,10 @@ mod webview2 {
     use web_time::Instant;
     use webview2_com::Microsoft::Web::WebView2::Win32::*;
     use webview2_com::{
-        CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler, NavigationCompletedEventHandler,
-        PrintCompletedHandler, PrintToPdfCompletedHandler,
+        CallDevToolsProtocolMethodCompletedHandler, CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
+        ExecuteScriptCompletedHandler, NavigationCompletedEventHandler, PrintCompletedHandler, PrintToPdfCompletedHandler,
     };
+    use base64::Engine as _;
     use windows::Win32::Foundation::{GlobalFree, HWND, RECT};
     use windows::Win32::Graphics::Gdi::*;
     use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
@@ -340,7 +344,7 @@ mod webview2 {
                 Some(c) => Some(c),
                 None => return Ok(false),
             },
-            Job::Pdf(_) => None,
+            Job::Pdf(_) | Job::Image(_) => None,
         };
         let page = fdl_core::vfs::temp_dir().join(format!("quiet-md-print-{}.html", fdl_core::vfs::process_id()));
         std::fs::write(&page, html).map_err(|_| fail())?;
@@ -471,6 +475,47 @@ mod webview2 {
                     .map_err(|_| None)?;
                 }
                 Ok(wait(&done, None, cx).await.unwrap_or(false))
+            }
+            Job::Image(path) => {
+                let size: Slot<Option<(f64, f64)>> = Rc::default();
+                let s = size.clone();
+                unsafe {
+                    web.ExecuteScript(
+                        &HSTRING::from("({width: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth, window.innerWidth), height: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)})"),
+                        &ExecuteScriptCompletedHandler::create(Box::new(move |hr, result| {
+                            *s.borrow_mut() = Some(hr.is_ok().then(|| serde_json::from_str::<serde_json::Value>(&result).ok()).flatten()
+                                .and_then(|v| Some((v.get("width")?.as_f64()?, v.get("height")?.as_f64()?))));
+                            Ok(())
+                        })),
+                    )
+                    .map_err(|_| None)?;
+                }
+                let (w, h) = wait(&size, Some(LOAD_TIMEOUT), cx).await.flatten().ok_or(None)?;
+                let clip = serde_json::json!({
+                    "format": "png",
+                    "fromSurface": true,
+                    "captureBeyondViewport": true,
+                    "clip": { "x": 0, "y": 0, "width": w.clamp(1., 2400.), "height": h.clamp(1., 16000.), "scale": 1. },
+                });
+                let shot: Slot<Option<String>> = Rc::default();
+                let s = shot.clone();
+                unsafe {
+                    web.CallDevToolsProtocolMethod(
+                        &HSTRING::from("Page.captureScreenshot"),
+                        &HSTRING::from(clip.to_string()),
+                        &CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |hr, json| {
+                            *s.borrow_mut() = hr.is_ok().then_some(Some(json));
+                            Ok(())
+                        })),
+                    )
+                    .map_err(|_| None)?;
+                }
+                let json = wait(&shot, Some(LOAD_TIMEOUT), cx).await.flatten().ok_or(None)?;
+                let value: serde_json::Value = serde_json::from_str(&json).map_err(|_| None)?;
+                let data = value.get("data").and_then(|v| v.as_str()).ok_or(None)?;
+                let bytes = base64::engine::general_purpose::STANDARD.decode(data).map_err(|_| None)?;
+                std::fs::write(path, bytes).map_err(|_| None)?;
+                Ok(true)
             }
             Job::Print => {
                 let c = choice.ok_or(None)?;

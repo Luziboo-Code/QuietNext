@@ -358,6 +358,48 @@ impl Workspace {
         .detach();
     }
 
+    /// 下载为 → 图片: the whole page laid out by WebView2, saved as PNG.
+    pub fn export_image(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_menus();
+        if !printing::IMAGE_SUPPORTED {
+            self.show_toast_kind(ToastKind::Error, crate::settings::text("当前系统不支持"), cx);
+            return;
+        }
+        cx.notify();
+        let Some(doc) = self.doc_of(id, cx) else { return };
+        let subs = self.sub_page_titles(id);
+        let name = file_name(&doc);
+        let path = save_path(&format!("{name}.png"), cx);
+        let view = printing::parent_of(window);
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(mut path) = path.await else { return };
+            if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("png")) {
+                let mut p = path.into_os_string();
+                p.push(".png");
+                path = PathBuf::from(p);
+                if path.fs_exists() {
+                    let msg = crate::localized_format!("已有同名文件：{}", "A file with this name already exists: {}", path.display());
+                    let _ = this.update(cx, |w, cx| w.show_toast_kind(ToastKind::Error, &msg, cx));
+                    return;
+                }
+            }
+            let _ = this.update(cx, |w, cx| w.show_toast_kind(ToastKind::Info, crate::settings::text("正在导出图片"), cx));
+            let html = crate::html::to_html(&doc, &crate::html::Options { sub_pages: &subs });
+            let _ = fdl_core::vfs::remove_file(&path);
+            let res = printing::run(html, name, Job::Image(path.clone()), view, cx).await;
+            let ok = matches!(res, Ok(true)) && path.fs_exists();
+            let _ = this.update(cx, |w, cx| {
+                if ok {
+                    w.toast = None;
+                    cx.notify();
+                } else {
+                    w.show_toast_kind(ToastKind::Error, crate::settings::text("导出失败，请重试"), cx);
+                }
+            });
+        })
+        .detach();
+    }
+
     /// 打印: the system print panel over the same A4 layout as PDF.
     pub fn print_doc(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.close_menus();

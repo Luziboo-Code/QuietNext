@@ -936,6 +936,7 @@ impl Workspace {
                 _ => origin.x,
             };
             let x = left + px(menu_w + 4.);
+            let md = dl.clone();
             out.push(
                 deferred(
                     anchored().anchor(Anchor::TopLeft).position(point(x, px(top))).snap_to_window_with_margin(px(8.)).child(
@@ -947,7 +948,11 @@ impl Workspace {
                             .py(px(crate::ui::MENU_PAD_Y))
                             .child(canvas(move |b, _, _| record.set(Some(b)), |_, _, _, _| {}).absolute().inset_0())
                             .when(crate::printing::SUPPORTED, |d| d.child(crate::docmenu::sub_item("rm-pdf", "PDF").on_click(cx.listener(move |w, _, window, cx| w.export_pdf(&pdf, window, cx)))))
-                            .child(crate::docmenu::sub_item("rm-md", "Markdown").on_click(cx.listener(move |w, _, _, cx| w.open_export_md(&dl, cx)))),
+                            .child(crate::docmenu::sub_item("rm-md", "Markdown").on_click(cx.listener(move |w, _, _, cx| w.open_export_md(&md, cx))))
+                            .when(crate::printing::IMAGE_SUPPORTED, |d| d.child({
+                                let png = dl.clone();
+                                crate::docmenu::sub_item("rm-image", crate::settings::text("图片")).on_click(cx.listener(move |w, _, window, cx| w.export_image(&png, window, cx)))
+                            })),
                     ),
                 )
                 .with_priority(2)

@@ -27,7 +27,9 @@ impl Editor {
     }
 
     fn read_only_hint(&self) -> &'static str {
-        if self.preview { PREVIEW_HINT } else { READ_ONLY_HINT }
+        if self.preview { PREVIEW_HINT }
+        else if self.locked { crate::settings::text("当前文档已锁定，请先在“…”菜单中解锁") }
+        else { READ_ONLY_HINT }
     }
 
     pub fn set_read_only(&mut self, on: bool, cx: &mut Context<Self>) {
