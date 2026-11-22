@@ -138,6 +138,7 @@ impl Workspace {
     pub fn toggle_lock(&mut self, cx: &mut Context<Self>) {
         self.close_doc_menu(cx);
         let Some(id) = self.current.clone() else { return };
+        if self.editor.as_ref().is_some_and(|e| { let e = e.read(cx); e.board_open() || e.table_file }) { return; }
         let next = !self.entries.iter().find(|e| e.id == id).is_some_and(|e| e.meta.locked);
         if let Some(e) = self.entries.iter_mut().find(|e| e.id == id) {
             e.meta.locked = next;

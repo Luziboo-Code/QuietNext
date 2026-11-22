@@ -384,7 +384,7 @@ impl Workspace {
                 }
             }
             let _ = this.update(cx, |w, cx| w.show_toast_kind(ToastKind::Info, crate::settings::text("正在导出图片"), cx));
-            let html = crate::html::to_html(&doc, &crate::html::Options { sub_pages: &subs });
+            let html = crate::html::to_html_image(&doc, &crate::html::Options { sub_pages: &subs });
             let _ = fdl_core::vfs::remove_file(&path);
             let res = printing::run(html, name, Job::Image(path.clone()), view, cx).await;
             let ok = matches!(res, Ok(true)) && path.fs_exists();

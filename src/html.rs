@@ -81,6 +81,17 @@ a { color: #0f5492; text-decoration: underline; text-underline-offset: 2px; }
 /// The document as a standalone page, always in the light colours (it is printed or opened elsewhere).
 pub fn to_html(doc: &Document, opts: &Options) -> String { crate::theme::light(|| page(doc, opts)) }
 
+/// 下载为 → 图片: the same page with the editor's page margins around the
+/// text, so the capture is the page surface rather than a text-only strip.
+pub fn to_html_image(doc: &Document, opts: &Options) -> String {
+    const IMAGE_CSS: &str = r#"
+html { background: #fff; }
+body { width: 1200px; padding: 40px 72px 64px; background: #fff; }
+"#;
+    let html = to_html(doc, opts);
+    html.replacen("</head>", &format!("<style>{IMAGE_CSS}</style></head>"), 1)
+}
+
 fn page(doc: &Document, opts: &Options) -> String {
     let title = crate::settings::display_title(&doc.title.text);
     let mut out = String::new();

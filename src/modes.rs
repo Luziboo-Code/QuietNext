@@ -7,12 +7,13 @@ use crate::trash::menu_label;
 use crate::ui::{ToastKind, icon, menu_glyph, menu_row, popover};
 use gpui::{prelude::FluentBuilder, *};
 
-actions!(workspace, [EditMode, ReadMode, ToggleShortcuts]);
+actions!(workspace, [EditMode, ReadMode, LockDoc, ToggleShortcuts]);
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("ctrl-alt-e", EditMode, None),
         KeyBinding::new("ctrl-alt-v", ReadMode, None),
+        KeyBinding::new("cmd-shift-k", LockDoc, None),
         KeyBinding::new("cmd-/", ToggleShortcuts, None),
         KeyBinding::new("cmd-alt-n", crate::app::NewDoc, None),
     ]);

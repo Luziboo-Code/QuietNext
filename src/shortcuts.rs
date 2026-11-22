@@ -222,6 +222,7 @@ fn info(name: &str) -> Option<(usize, &'static str, &'static str)> {
         "Save" => (1, "保存文档", "Save document"),
         "EditMode" => (1, "编辑模式", "Edit mode"),
         "ReadMode" => (1, "阅读模式", "Reading mode"),
+        "LockDoc" => (1, "锁定编辑", "Lock editing"),
         "FindInDoc" => (1, "文档内查找", "Find in document"),
         "ReplaceInDoc" => (1, "查找和替换", "Find and replace"),
         "Undo" => (2, "撤销", "Undo"),

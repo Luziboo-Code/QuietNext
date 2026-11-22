@@ -1953,6 +1953,7 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|w, _: &crate::modes::EditMode, window, cx| w.set_mode(false, window, cx)))
             .on_action(cx.listener(|w, _: &crate::modes::ReadMode, window, cx| w.set_mode(true, window, cx)))
+            .on_action(cx.listener(|w, _: &crate::modes::LockDoc, _, cx| w.toggle_lock(cx)))
             .on_action(cx.listener(|w, _: &crate::modes::ToggleShortcuts, _, cx| {
                 w.shortcuts = !w.shortcuts;
                 cx.notify();
