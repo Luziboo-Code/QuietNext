@@ -121,7 +121,8 @@ pub struct DocPick {
 pub struct AiPanel {
     docs: Vec<DocPick>,
     folders: Vec<(String, String)>,
-    folder: Option<String>,
+    selected_folders: Vec<String>,
+    folder_menu: Option<Point<Pixels>>,
     search: Entity<TextField>,
     count: u32,
     generating: bool,
@@ -584,7 +585,7 @@ impl Workspace {
             if matches!(ev, TextFieldEvent::Changed) { cx.notify() }
         });
         self.review.ai = Some(AiPanel {
-            docs, folders, folder: None, search: search.clone(), count: 5,
+            docs, folders, selected_folders: Vec::new(), folder_menu: None, search: search.clone(), count: 5,
             generating: false, error: None, results: Vec::new(), _search_sub: search_sub,
         });
         self.review.draft = None;
@@ -599,8 +600,9 @@ impl Workspace {
         let selected = a.results.iter().filter(|r| r.selected).count();
         let chosen = a.docs.iter().filter(|d| d.selected).count();
         let query = a.search.read(cx).text.trim().to_lowercase();
+        let picks = &a.selected_folders;
         let visible: Vec<(usize, &DocPick)> = a.docs.iter().enumerate()
-            .filter(|(_, d)| a.folder.as_deref().is_none_or(|f| d.folders.iter().any(|x| x == f)))
+            .filter(|(_, d)| picks.is_empty() || d.folders.iter().any(|x| picks.contains(x)))
             .filter(|(_, d)| query.is_empty() || d.title.to_lowercase().contains(&query))
             .collect();
         let all_visible = !visible.is_empty() && visible.iter().all(|(_, d)| d.selected);
@@ -621,23 +623,15 @@ impl Workspace {
                 .child(div().flex_1().min_w_0().truncate().text_size(px(12.)).child(d.title.clone()))
                 .on_click(cx.listener(move |w, _, _, cx| w.ai_toggle_doc(idx, cx))));
         }
-        let mut folder_row = div().flex().flex_wrap().gap(px(4.));
-        folder_row = folder_row.child(div().id("ai-folder-all").h(px(22.)).px(px(8.)).flex().items_center().rounded(px(6.)).cursor_pointer()
-            .text_size(px(10.)).line_height(px(14.))
-            .when(a.folder.is_none(), |d| d.bg(theme::ca(0x2383e2, 0.12)).text_color(Theme::primary()))
-            .when(a.folder.is_some(), |d| d.bg(Theme::fill_hover()).text_color(Theme::text_caption()).hover(|s| s.bg(Theme::fill_hover_strong())))
-            .child(tr("全部文件夹", "All folders"))
-            .on_click(cx.listener(|w, _, _, cx| { if let Some(a) = &mut w.review.ai { a.folder = None; } cx.notify(); })));
-        for (i, (id, name)) in a.folders.iter().enumerate() {
-            let folder_id = id.clone();
-            let on = a.folder.as_deref() == Some(id.as_str());
-            folder_row = folder_row.child(div().id(("ai-folder", i)).h(px(22.)).px(px(8.)).flex().items_center().rounded(px(6.)).cursor_pointer()
-                .text_size(px(10.)).line_height(px(14.))
-                .when(on, |d| d.bg(theme::ca(0x2383e2, 0.12)).text_color(Theme::primary()))
-                .when(!on, |d| d.bg(Theme::fill_hover()).text_color(Theme::text_caption()).hover(|s| s.bg(Theme::fill_hover_strong())))
-                .child(name.clone())
-                .on_click(cx.listener(move |w, _, _, cx| { if let Some(a) = &mut w.review.ai { a.folder = Some(folder_id.clone()); } cx.notify(); })));
-        }
+        let folder_label: SharedString = if a.selected_folders.is_empty() {
+            tr("全部文件夹", "All folders").into()
+        } else if a.selected_folders.len() == 1 {
+            a.folders.iter().find(|(id, _)| a.selected_folders.contains(id))
+                .map(|(_, name)| name.clone().into())
+                .unwrap_or_else(|| tr("1 个文件夹", "1 folder").into())
+        } else {
+            crate::localized_format!("{} 个文件夹", "{} folders", a.selected_folders.len()).into()
+        };
         let mut results = div().flex().flex_col().gap(px(6.));
         for (i, r) in a.results.iter().enumerate() {
             results = results.child(div().id(("ai-result", i)).p(px(9.)).rounded(px(8.)).border_1().border_color(Theme::line_border())
@@ -659,10 +653,23 @@ impl Workspace {
                 .child(label(tr("选择文档", "Documents")))
                 .child(settings::link_button("ai-select-all", if all_visible { tr("全不选", "Select none") } else { tr("全选", "Select all") })
                     .on_click(cx.listener(|w, _, _, cx| w.ai_toggle_all_docs(cx)))))
-            .child(div().h(px(28.)).px(px(7.)).flex().items_center().gap(px(6.)).rounded(px(7.)).bg(Theme::fill_hover())
-                .child(icon("search", 13., Theme::icon()))
-                .child(div().flex_1().min_w_0().child(a.search.clone())))
-            .when(!a.folders.is_empty(), |d| d.child(folder_row))
+            .child(div().flex().items_center().gap(px(6.))
+                .child(div().flex_1().min_w_0().h(px(28.)).px(px(7.)).flex().items_center().gap(px(6.)).rounded(px(7.)).bg(Theme::fill_hover())
+                    .child(icon("search", 13., Theme::icon()))
+                    .child(div().flex_1().min_w_0().child(a.search.clone())))
+                .when(!a.folders.is_empty(), |d| d.child(
+                    div().id("ai-folder-select").h(px(28.)).px(px(8.)).flex_none().flex().items_center().gap(px(4.)).rounded(px(7.))
+                        .border_1().border_color(Theme::line_border()).bg(theme::raised(Theme::bg_body())).cursor_pointer()
+                        .text_size(px(11.)).text_color(Theme::text_caption())
+                        .when(a.folder_menu.is_some(), |s| s.bg(Theme::fill_hover()))
+                        .child(div().max_w(px(150.)).truncate().child(folder_label))
+                        .child(icon("chevron-down", 11., Theme::text_caption()))
+                        .on_click(cx.listener(|w, ev: &ClickEvent, _, cx| {
+                            if let Some(a) = &mut w.review.ai {
+                                a.folder_menu = if a.folder_menu.is_some() { None } else { Some(point(ev.position().x, ev.position().y + px(4.))) };
+                            }
+                            cx.notify();
+                        })))))
             .child(doc_list)
             .child(div().flex().items_center().gap(px(8.))
                 .child(div().flex_1().text_size(px(11.)).text_color(Theme::text_caption()).child(crate::localized_format!("已选 {} 篇文档", "{} documents selected", chosen)))
@@ -697,8 +704,35 @@ impl Workspace {
                         .child(settings::button("ai-add-all", tr("全部添加", "Add all"))
                             .on_click(cx.listener(|w, _, _, cx| w.ai_add(true, cx))))))
                 .child(results));
-        div().id("rev-ai-scroll").flex_1().min_w_0().h_full().overflow_y_scroll().px(px(28.)).py(px(22.)).flex().flex_col().items_center()
-            .child(body).into_any_element()
+        let mut page = div().id("rev-ai-scroll").flex_1().min_w_0().h_full().overflow_y_scroll().px(px(28.)).py(px(22.)).flex().flex_col().items_center()
+            .child(body);
+        if let Some(pos) = a.folder_menu {
+            let mut menu = ui::popover().id("ai-folder-menu").occlude().min_w(px(220.)).py(px(crate::ui::MENU_PAD_Y))
+                .on_mouse_down_out(cx.listener(|w, _, _, cx| { if let Some(a) = &mut w.review.ai { a.folder_menu = None; } cx.notify(); }))
+                .child(ui::menu_row("ai-folder-all", "ai-folder-menu".into())
+                    .child(ui::checkbox(a.selected_folders.is_empty()))
+                    .child(tr("全部文件夹", "All folders"))
+                    .on_click(cx.listener(|w, _, _, cx| {
+                        if let Some(a) = &mut w.review.ai { a.selected_folders.clear(); a.folder_menu = None; }
+                        cx.notify();
+                    })));
+            for (i, (id, name)) in a.folders.iter().enumerate() {
+                let fid = id.clone();
+                let on = a.selected_folders.contains(id);
+                menu = menu.child(ui::menu_row(("ai-folder-opt", i), "ai-folder-menu".into())
+                    .child(ui::checkbox(on))
+                    .child(name.clone())
+                    .on_click(cx.listener(move |w, _, _, cx| {
+                        if let Some(a) = &mut w.review.ai {
+                            if let Some(k) = a.selected_folders.iter().position(|f| f == &fid) { a.selected_folders.remove(k); }
+                            else { a.selected_folders.push(fid.clone()); }
+                        }
+                        cx.notify();
+                    })));
+            }
+            page = page.child(deferred(anchored().anchor(Anchor::TopLeft).position(pos).snap_to_window_with_margin(px(8.)).child(menu)).with_priority(2));
+        }
+        page.into_any_element()
     }
 
     fn ai_toggle_doc(&mut self, i: usize, cx: &mut Context<Self>) {
@@ -708,9 +742,9 @@ impl Workspace {
     fn ai_toggle_all_docs(&mut self, cx: &mut Context<Self>) {
         if let Some(a) = &mut self.review.ai {
             let query = a.search.read(cx).text.trim().to_lowercase();
-            let folder = a.folder.clone();
+            let picks = a.selected_folders.clone();
             let visible: Vec<usize> = a.docs.iter().enumerate()
-                .filter(|(_, d)| folder.as_deref().is_none_or(|f| d.folders.iter().any(|x| x == f)))
+                .filter(|(_, d)| picks.is_empty() || d.folders.iter().any(|x| picks.contains(x)))
                 .filter(|(_, d)| query.is_empty() || d.title.to_lowercase().contains(&query))
                 .map(|(i, _)| i).collect();
             let all = !visible.is_empty() && visible.iter().all(|i| a.docs[*i].selected);
