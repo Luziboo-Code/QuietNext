@@ -32,20 +32,20 @@ pub fn set_menus(cx: &mut App) {
     use crate::settings::tr;
     cx.set_menus(vec![
         Menu {
-            name: "Quiet.md".into(),
+            name: "Quiet.Next".into(),
             items: vec![
-                MenuItem::action(tr("关于 Quiet.md", "About Quiet.md"), OpenAbout),
+                MenuItem::action(tr("关于 Quiet.Next", "About Quiet.Next"), OpenAbout),
                 MenuItem::action(tr("检查更新…", "Check for Updates…"), CheckForUpdates),
                 MenuItem::separator(),
                 MenuItem::action(tr("设置…", "Settings…"), OpenSettings),
                 MenuItem::separator(),
                 MenuItem::os_submenu(tr("服务", "Services"), SystemMenuType::Services),
                 MenuItem::separator(),
-                MenuItem::action(tr("隐藏 Quiet.md", "Hide Quiet.md"), HideApp),
+                MenuItem::action(tr("隐藏 Quiet.Next", "Hide Quiet.Next"), HideApp),
                 MenuItem::action(tr("隐藏其他", "Hide Others"), HideOthers),
                 MenuItem::action(tr("全部显示", "Show All"), ShowAll),
                 MenuItem::separator(),
-                MenuItem::action(tr("退出 Quiet.md", "Quit Quiet.md"), Quit),
+                MenuItem::action(tr("退出 Quiet.Next", "Quit Quiet.Next"), Quit),
             ],
             disabled: false,
         },
@@ -210,7 +210,7 @@ pub struct RowMenu {
     pub batch: bool,
 }
 
-/// What the main pane shows: the open document, 主页 or 回收站.
+/// What the main pane shows: a document, 主页, 回收站, 设置, 日历 or 复习.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum View {
     Doc,
@@ -218,6 +218,8 @@ pub enum View {
     Folder,
     Trash,
     Settings,
+    Calendar,
+    Review,
 }
 
 /// A confirmation dialog and the pages it is about.
@@ -358,6 +360,8 @@ pub struct Workspace {
     pub onboarding: Option<Entity<crate::onboarding::Onboarding>>,
     pub view: View,
     pub home: crate::home::Home,
+    pub calendar: crate::calendar::Calendar,
+    pub review: crate::review::Review,
     pub settings_scroll: ScrollHandle,
     /// 回收站 rows, refreshed when the page opens or changes.
     pub trash: Vec<crate::store::TrashEntry>,
@@ -613,6 +617,8 @@ impl Workspace {
             onboarding: None,
             view: View::Doc,
             home: Default::default(),
+            calendar: Default::default(),
+            review: Default::default(),
             settings_scroll: ScrollHandle::new(),
             trash: vec![],
             trash_menu: None,
@@ -659,6 +665,31 @@ impl Workspace {
                 }
             }
             None => ws.view = View::Home,
+        }
+        // Previews and screenshots of 日历 (nothing is written). A value such
+        // as 2026-12-14 also picks the day to show.
+        if let Some(v) = std::env::var_os("QUIET_MD_CALENDAR") {
+            ws.view = View::Calendar;
+            let text = v.to_string_lossy().to_string();
+            let mut parts = text.split('-').filter_map(|p| p.parse::<i64>().ok());
+            if let (Some(y), Some(m), Some(d)) = (parts.next(), parts.next(), parts.next())
+                && (1..=12).contains(&m) && (1..=31).contains(&d) {
+                ws.calendar.show_day(crate::time::days_from_civil(y, m as u32, d as u32));
+            }
+            if let Some(id) = std::env::var_os("QUIET_MD_CALENDAR_EDIT") {
+                ws.open_event(&id.to_string_lossy(), window, cx);
+            }
+        }
+        if std::env::var_os("QUIET_MD_REVIEW").is_some() { ws.view = View::Review; }
+        if std::env::var_os("QUIET_MD_REVIEW_SESSION").is_some() { ws.view = View::Review; ws.start_review(cx); }
+        if let Some(v) = std::env::var_os("QUIET_MD_SETTINGS") {
+            let page = match v.to_string_lossy().as_ref() {
+                "review" => crate::settings::Page::Review,
+                "appearance" => crate::settings::Page::Appearance,
+                "about" => crate::settings::Page::About,
+                _ => crate::settings::Page::General,
+            };
+            ws.open_settings(page, cx);
         }
         // Kept in the top bar (not just a toast): the user should notice.
         let warnings = ws.store.take_warnings();
@@ -723,7 +754,7 @@ impl Workspace {
         };
         let meta = self.entries.iter().find(|e| e.id == id).map(|e| e.meta.clone());
         let modified = meta.as_ref().map_or_else(crate::time::now, |m| m.modified);
-        let width = meta.as_ref().map(|m| m.width).unwrap_or_default();
+        let width = meta.as_ref().and_then(|m| m.width).unwrap_or_else(|| crate::settings::prefs().page_width());
         let pinned = meta.as_ref().is_some_and(|m| !m.catalogue_closed);
         let editor = cx.new(|cx| {
             let mut e = Editor::new(doc, modified, width, window, cx);
@@ -981,7 +1012,7 @@ impl Workspace {
         cx.notify();
     }
 
-    /// Switch the main pane to 主页 or 回收站 (or back to the document).
+    /// Switch the main pane to a page view (or back to the document).
     pub fn show_view(&mut self, view: View, cx: &mut Context<Self>) {
         self.cancel_shortcut_recording(cx);
         self.close_history(cx);
@@ -1822,6 +1853,8 @@ impl Render for Workspace {
             View::Folder => self.render_folder(window, cx),
             View::Trash => self.render_trash(cx),
             View::Settings => self.render_settings(cx),
+            View::Calendar => self.render_calendar(window, cx),
+            View::Review => self.render_review(window, cx),
         };
         let move_dlg = self.render_move_dialog(cx);
         let export_md = self.render_export_md(cx);
@@ -1904,6 +1937,11 @@ impl Render for Workspace {
                 if ev.keystroke.key == "escape" && w.view == View::Settings && !w.settings_filter.read(cx).is_focused(window) {
                     w.close_settings(cx);
                     cx.stop_propagation();
+                    return;
+                }
+                // Esc closes the event editor; the calendar stays open.
+                if ev.keystroke.key == "escape" && w.view == View::Calendar {
+                    if w.calendar.draft_open() { w.calendar.close_draft(); cx.stop_propagation(); cx.notify(); }
                     return;
                 }
                 if ev.keystroke.key == "escape" && (w.doc_info.is_some() || w.history.is_some() || w.doc_menu || w.mode_menu) {

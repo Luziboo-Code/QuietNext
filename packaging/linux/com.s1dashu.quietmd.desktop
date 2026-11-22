@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Quiet.md
+Name=Quiet.Next
 Comment=Local notes
 Exec=quiet_md %F
 Icon=com.s1dashu.quietmd

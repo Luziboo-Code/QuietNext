@@ -1,6 +1,6 @@
 //! The 数据表 file: a plain SQLite database in which every table is a SQL
 //! table under its own name, with the columns and the values the app shows,
-//! so `sqlite3` or an agent reads and edits it without knowing Quiet.md.
+//! so `sqlite3` or an agent reads and edits it without knowing Quiet.Next.
 //! What only the app needs (field types, options, views) sits in four `_`
 //! tables beside them. Each call opens the file, works and closes it: no
 //! connection is held, so the file can be renamed or moved in between.
@@ -20,18 +20,18 @@ use std::path::Path;
 pub const FORMAT: u32 = 1;
 
 const README: &str = "\
-Quiet.md 数据表。每张数据表就是一张同名的 SQL 表，列名就是字段名，值就是界面上看到的内容。
+Quiet.Next 数据表。每张数据表就是一张同名的 SQL 表，列名就是字段名，值就是界面上看到的内容。
 - 每张表开头的三列：`id` 是记录的编号（主键）；`_order` 是手动排序的行号（从 0 起）；`_meta` 是 JSON，记着这条记录的创建、修改时间和自动编号。
 - 单选存选项名；多选、人员存选项名的 JSON 数组；关联存对方表记录 id 的 JSON 数组；附件存 {path, name} 的 JSON 数组；日期是 2026-11-17 或 2026-11-17 09:30；复选框是 1 / 0；空格子是 NULL。
 - `_fields` 里 type 为 formula、lookup、auto_number、created_time、modified_time 的列是算出来的，直接改会被覆盖。
-- 别的列可以直接改，也可以加行、删行、加列、加表：Quiet.md 下次读取时照单全收，没见过的选项名会加进选项。
+- 别的列可以直接改，也可以加行、删行、加列、加表：Quiet.Next 下次读取时照单全收，没见过的选项名会加进选项。
 - 选项的颜色、数字和日期的显示格式、公式在 `_fields.options`；视图（筛选、排序、分组、列宽等）在 `_views.config`；表的顺序在 `_tables`。
 
-A Quiet.md data table file. Every data table is a SQL table of the same name; its columns are the fields and its values are what the app shows.
+A Quiet.Next data table file. Every data table is a SQL table of the same name; its columns are the fields and its values are what the app shows.
 - Three leading columns: `id` is the record's id (primary key); `_order` is its row in manual order (from 0); `_meta` is JSON with the record's created / modified times and auto number.
 - A single select holds the option's name; multi selects and people hold a JSON array of names; links hold a JSON array of the other table's record ids; attachments hold a JSON array of {path, name}; dates read 2026-11-17 or 2026-11-17 09:30; checkboxes are 1 / 0; an empty cell is NULL.
 - Columns whose `_fields.type` is formula, lookup, auto_number, created_time or modified_time are computed: edits to them are overwritten.
-- Every other column can be edited directly, and rows, columns and tables added or removed: Quiet.md takes it all in the next time it reads the file, adding option names it has not seen.
+- Every other column can be edited directly, and rows, columns and tables added or removed: Quiet.Next takes it all in the next time it reads the file, adding option names it has not seen.
 - Option colours, number and date formats and formulas are in `_fields.options`; views (filter, sort, group, widths…) in `_views.config`; the order of tables in `_tables`.";
 
 /// Make the file (an error if it is there already) and write `base` to it.
@@ -284,7 +284,7 @@ fn write_meta(conn: &Connection, base: &Base, names: &[String]) -> Result<()> {
         }
     }
     let mut meta = conn.prepare("INSERT INTO _meta VALUES (?, ?)")?;
-    for (k, v) in [("format", FORMAT.to_string()), ("app", "Quiet.md".to_string()), ("next_id", base.next_id.to_string()), ("readme", README.to_string())] { meta.execute(params![k, v])?; }
+    for (k, v) in [("format", FORMAT.to_string()), ("app", "Quiet.Next".to_string()), ("next_id", base.next_id.to_string()), ("readme", README.to_string())] { meta.execute(params![k, v])?; }
     Ok(())
 }
 
@@ -751,7 +751,7 @@ mod tests {
         assert_eq!(grid(&conn, "select type, options from _fields where name = '开始'")[0], [t("date"), t(r#"{"date":"cn","time":true}"#)]);
         assert_eq!(grid(&conn, "select table_name, type from _views where name = '看板'")[0], [t("读书清单"), t("kanban")]);
         assert_eq!(grid(&conn, "select name, position, next_rec, next_auto from _tables order by position"), [[t("读书清单"), Sql::Integer(0), Sql::Integer(12), Sql::Integer(30)], [t("作者"), Sql::Integer(1), Sql::Integer(4), Sql::Integer(14)]]);
-        assert_eq!(grid(&conn, "select value from _meta where key in ('format', 'app') order by key"), [[t("Quiet.md")], [t("1")]]);
+        assert_eq!(grid(&conn, "select value from _meta where key in ('format', 'app') order by key"), [[t("Quiet.Next")], [t("1")]]);
         assert!(text(&grid(&conn, "select value from _meta where key = 'readme'")[0][0]).contains("_order"));
         let config: serde_json::Value = serde_json::from_str(&text(&grid(&conn, "select config from _views where name = '在读'")[0][0])).unwrap();
         assert_eq!(config["folded"], serde_json::json!(["", "想读\u{1f}x", "读完"]));

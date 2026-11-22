@@ -32,9 +32,9 @@ BEGIN
   BEGIN
     BLOCK "040904B0"
     BEGIN
-      VALUE "FileDescription", "Quiet.md\0"
+      VALUE "FileDescription", "Quiet.Next\0"
       VALUE "FileVersion", "{version}\0"
-      VALUE "ProductName", "Quiet.md\0"
+      VALUE "ProductName", "Quiet.Next\0"
       VALUE "ProductVersion", "{version}\0"
       VALUE "OriginalFilename", "quiet_md.exe\0"
     END

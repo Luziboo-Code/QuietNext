@@ -37,9 +37,9 @@ pub struct Meta {
     /// Last time the document was opened, for 最近访问 (this computer only).
     #[serde(default)]
     pub opened: u64,
-    /// 页宽设置, remembered per document.
-    #[serde(default, skip_serializing_if = "PageWidth::is_standard")]
-    pub width: PageWidth,
+    /// 页宽设置, remembered per document; absent follows the app's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<PageWidth>,
     /// Catalogue visibility is remembered independently of document headings.
     #[serde(default = "catalogue_closed_default")]
     pub catalogue_closed: bool,
@@ -139,7 +139,7 @@ impl Default for Meta {
     fn default() -> Self {
         Self {
             folder: None, root_order: None, created: 0, modified: 0, pinned: false, opened: 0,
-            width: PageWidth::default(), catalogue_closed: true,
+            width: None, catalogue_closed: true,
             parent: None, order: 0, starred: 0, reading: false,
             info: InfoRow::default(), refs_hidden: false,
             markdown: false, path: None, name: None, rel: String::new(), kind: DocKind::Doc,
@@ -195,10 +195,6 @@ pub enum PageWidth {
 }
 
 impl PageWidth {
-    fn is_standard(&self) -> bool {
-        *self == PageWidth::Standard
-    }
-
     /// Max width of the content column; `None` fills the page.
     pub fn max(self) -> Option<f32> {
         match self {
@@ -429,8 +425,8 @@ struct Attached {
     order: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     root_order: Option<u64>,
-    #[serde(default, skip_serializing_if = "PageWidth::is_standard")]
-    width: PageWidth,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    width: Option<PageWidth>,
     #[serde(default = "catalogue_closed_default", skip_serializing_if = "Clone::clone")]
     catalogue_closed: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -711,8 +707,12 @@ impl Store {
 
     pub fn default_root() -> PathBuf {
         // The web build's library lives in memory (vfs).
-        if cfg!(target_family = "wasm") { return PathBuf::from("/Quiet.md") }
-        dirs::document_dir().or_else(|| dirs::home_dir().map(|h| h.join("Documents"))).unwrap_or_else(|| PathBuf::from(".")).join("Quiet.md")
+        if cfg!(target_family = "wasm") { return PathBuf::from("/Quiet.Next") }
+        let docs = dirs::document_dir().or_else(|| dirs::home_dir().map(|h| h.join("Documents"))).unwrap_or_else(|| PathBuf::from("."));
+        let next = docs.join("Quiet.Next");
+        // An existing library from before the rename keeps opening where it is.
+        let old = docs.join("Quiet.md");
+        if !next.fs_exists() && old.fs_exists() { old } else { next }
     }
 
     /// The library's own data (`.quiet/`): preferences, shortcuts, themes,
@@ -987,11 +987,11 @@ impl Store {
         let flat = Self::flat_at(&root);
         if flat {
             let format = reread::<FormatMarker>(&root.join("format.json")).map_or(0, |m| m.format);
-            anyhow::ensure!(format <= FORMAT, "这个文档库由更新版本的 Quiet.md 创建，请升级后再打开");
+            anyhow::ensure!(format <= FORMAT, "这个文档库由更新版本的 Quiet.Next 创建，请升级后再打开");
             if !root.join("format.json").fs_exists() { write_atomic(&root.join("format.json"), &serde_json::to_vec_pretty(&FormatMarker { format })?)?; }
         } else {
             match crate::vfs::read(&marker).ok().and_then(|b| serde_json::from_slice::<FormatMarker>(&b).ok()) {
-                Some(m) if m.format > FORMAT => anyhow::bail!("这个文档库由更新版本的 Quiet.md 创建，请升级后再打开"),
+                Some(m) if m.format > FORMAT => anyhow::bail!("这个文档库由更新版本的 Quiet.Next 创建，请升级后再打开"),
                 // Moved to the new layout; what was left of the old one is set aside.
                 Some(_) => if migrate::legacy(&root) { migrate::finish(&root, &mut warnings); },
                 None => {
@@ -1257,9 +1257,9 @@ impl Store {
         f.lock()?;
         let lock = WriteLock(Some(f));
         // Another copy moved it to the new layout meanwhile: nothing more is written here.
-        anyhow::ensure!(!self.flat || !self.root.join(INTERNAL).join("format.json").fs_exists(), "文档库已升级到新格式，请重新打开 Quiet.md");
+        anyhow::ensure!(!self.flat || !self.root.join(INTERNAL).join("format.json").fs_exists(), "文档库已升级到新格式，请重新打开 Quiet.Next");
         let marker: FormatMarker = serde_json::from_slice(&crate::vfs::read(self.internal().join("format.json"))?)?;
-        anyhow::ensure!(marker.format <= FORMAT, "这个文档库由更新版本的 Quiet.md 创建，请升级后再打开");
+        anyhow::ensure!(marker.format <= FORMAT, "这个文档库由更新版本的 Quiet.Next 创建，请升级后再打开");
         // An unreadable index is not judged here (that is `open`'s job): the
         // version in memory is written back unchanged.
         if self.flat {
@@ -2403,7 +2403,7 @@ impl Store {
     pub fn set_width(&mut self, id: &str, width: PageWidth) -> Result<()> {
         let _lock = self.begin_write()?;
         if let Some(m) = self.index.get_mut(id) {
-            m.width = width;
+            m.width = Some(width);
         }
         self.save_index()
     }
@@ -3997,14 +3997,14 @@ mod tests {
         let mut old = Old::new(&lib, 3);
         let abs = |rel: &str| lib.0.join(rel).to_string_lossy().into_owned();
         let image = |src: String| Block::new(BlockKind::Image { src_kind: "src".into(), src, width: None, height: None, caption: None, crop: None }, RichText::default());
-        let moved = crate::vfs::temp_dir().join("elsewhere/Quiet.md/assets/p.png").to_string_lossy().into_owned();
+        let moved = crate::vfs::temp_dir().join("elsewhere/Quiet.Next/assets/p.png").to_string_lossy().into_owned();
         let d = Document { title: RichText::plain("图"), blocks: vec![
             image(abs("assets/p.png")),
             Block::new(BlockKind::File(FileBlock { src_kind: "path".into(), src: abs("assets/files/1234/报告.pdf"), name: "报告.pdf".into(), view: FileView::Card }), RichText::default()),
             image(moved.clone()),
             image(abs("assets/gone.png")),
             // Only through `.assets/x/` once moved: the fallback must not follow it.
-            image(crate::vfs::temp_dir().join("elsewhere/Quiet.md/assets/x/../../secret.png").to_string_lossy().into_owned()),
+            image(crate::vfs::temp_dir().join("elsewhere/Quiet.Next/assets/x/../../secret.png").to_string_lossy().into_owned()),
         ], ..Default::default() };
         let id = old.put(&d, Meta::default());
         old.write();
@@ -4079,8 +4079,8 @@ mod tests {
     #[test]
     fn synced_folders_are_recognised() {
         let home = dirs::home_dir().unwrap();
-        assert_eq!(sync_of(&home.join("Library/Mobile Documents/com~apple~CloudDocs/Quiet.md")), SyncService::ICloud);
-        assert_eq!(sync_of(&home.join("Library/CloudStorage/OneDrive-Personal/Quiet.md")), SyncService::Provider("OneDrive".into()));
+        assert_eq!(sync_of(&home.join("Library/Mobile Documents/com~apple~CloudDocs/Quiet.Next")), SyncService::ICloud);
+        assert_eq!(sync_of(&home.join("Library/CloudStorage/OneDrive-Personal/Quiet.Next")), SyncService::Provider("OneDrive".into()));
         assert_eq!(sync_of(&crate::vfs::temp_dir().join("x")), SyncService::Local);
         // An old library with a conflict copy left by syncing asks first.
         let lib = Lib::new("conflict");
@@ -4272,7 +4272,7 @@ mod tests {
         asset(&lib, "spare.png");
         // Markdown percent-encodes a space, DocxXML escapes `&`, and a page in
         // a subfolder writes its source relative to itself.
-        page_at(&lib, "note.md", "![](/Users/x/Quiet.md/.assets/1a2b-Screen%20Shot%202026-11-17%20at%2010.00.png)");
+        page_at(&lib, "note.md", "![](/Users/x/Quiet.Next/.assets/1a2b-Screen%20Shot%202026-11-17%20at%2010.00.png)");
         page_at(&lib, "sub/deep.md", "![](../.assets/a&amp;b.png)");
         // One link that does not decode to UTF-8 leaves the rest decodable,
         // and Markdown may escape punctuation with a backslash.
@@ -4302,7 +4302,7 @@ mod tests {
         asset(&lib, "unsaved.png");
         asset(&lib, "undone.png");
         // Text not saved yet, and a snapshot Undo can still bring back.
-        let live = vec![".assets/unsaved.png".to_string(), "/Users/x/Quiet.md/.assets/undone.png".to_string()];
+        let live = vec![".assets/unsaved.png".to_string(), "/Users/x/Quiet.Next/.assets/undone.png".to_string()];
         assert!(spare_assets(&lib, live).is_empty());
     }
 

@@ -59,7 +59,7 @@ impl Workspace {
     pub fn set_page_width(&mut self, width: PageWidth, cx: &mut Context<Self>) {
         let Some(id) = self.current.clone() else { return };
         if let Some(e) = self.entries.iter_mut().find(|e| e.id == id) {
-            e.meta.width = width;
+            e.meta.width = Some(width);
         }
         let _ = self.store.set_width(&id, width);
         if let Some(ed) = &self.editor {
@@ -100,7 +100,7 @@ impl Workspace {
         let mut doc = self.doc_of(id, cx)?;
         let title = crate::localized_format!("{} 副本", "{} copy", display_title(&doc.title.text));
         doc.title = crate::model::RichText::plain(title);
-        let width = self.entries.iter().find(|e| e.id == id).map(|e| e.meta.width).unwrap_or_default();
+        let width = self.entries.iter().find(|e| e.id == id).and_then(|e| e.meta.width);
         // A Markdown file copies as Markdown, into the library even from a 本机文件.
         // A 画板 copies as a 画板.
         let board = self.entries.iter().find(|e| e.id == id).filter(|e| e.meta.kind == crate::store::DocKind::Board)
@@ -112,7 +112,7 @@ impl Workspace {
             else if self.store.is_markdown(id) { let front = self.store.front_matter_of(id); self.store.create_markdown(&doc, &front) } else { self.store.create_from(&doc) };
         match made {
             Ok(new) => {
-                let _ = self.store.set_width(&new, width);
+                if let Some(width) = width { let _ = self.store.set_width(&new, width); }
                 let parent = self.entries.iter().find(|e| e.id == id).filter(|e| !e.meta.local()).and_then(|e| e.meta.parent.clone());
                 if let Some(parent) = parent { let _ = self.store.set_parent(&new, Some(&parent)); }
                 Some(new)
@@ -142,7 +142,7 @@ impl Workspace {
         let entry = self.entries.iter().find(|e| e.id == id);
         let pinned = entry.is_some_and(|e| e.meta.pinned);
         let starred = entry.is_some_and(|e| e.meta.starred > 0);
-        let width = entry.map(|e| e.meta.width).unwrap_or_default();
+        let width = entry.and_then(|e| e.meta.width).unwrap_or_else(|| crate::settings::prefs().page_width());
         let refs_shown = !entry.is_some_and(|e| e.meta.refs_hidden);
         // An open board isn't the page: no page width, find in its text or
         // editor shortcuts; a standalone board file has no Markdown or

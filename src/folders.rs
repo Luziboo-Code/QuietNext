@@ -105,7 +105,7 @@ impl Workspace {
             } else {
                 self.store.load(&key).and_then(|doc| self.store.create_from(&doc)).and_then(|new| {
                     self.store.set_parent(&new, parent.as_deref())?;
-                    self.store.set_width(&new, entry.meta.width)?;
+                    if let Some(width) = entry.meta.width { self.store.set_width(&new, width)?; }
                     Ok(new)
                 })
             };

@@ -7,9 +7,9 @@
 
 [Setup]
 AppId={{59DC98EE-A136-40C9-A7BD-EB0CC50E37C2}
-AppName=Quiet.md
+AppName=Quiet.Next
 AppVersion={#AppVersion}
-AppPublisher=Quiet.md
+AppPublisher=Quiet.Next
 AppPublisherURL=https://github.com/s1dashu/quiet-md
 DefaultDirName={localappdata}\Programs\quiet.md
 DisableDirPage=no
@@ -46,8 +46,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
 SelectDirLabel3=Choose an install folder. Your notes are stored separately.
-SelectTasksLabel2=Make Quiet.md easier to reach.
-FinishedLabel=Quiet.md is ready. A quiet place for your notes.
+SelectTasksLabel2=Make Quiet.Next easier to reach.
+FinishedLabel=Quiet.Next is ready. A quiet place for your notes.
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
@@ -59,8 +59,8 @@ Source: "..\..\LICENSE"; DestDir: "{app}"
 Source: "..\..\THIRD_PARTY.md"; DestDir: "{app}"
 
 [Icons]
-Name: "{userprograms}\Quiet.md"; Filename: "{app}\quiet_md.exe"; WorkingDir: "{app}"
-Name: "{userdesktop}\Quiet.md"; Filename: "{app}\quiet_md.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userprograms}\Quiet.Next"; Filename: "{app}\quiet_md.exe"; WorkingDir: "{app}"
+Name: "{userdesktop}\Quiet.Next"; Filename: "{app}\quiet_md.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 ; "Open with" for Markdown files and folders (not the default app): they are edited in place.
 [Registry]
@@ -71,13 +71,13 @@ Root: HKA; Subkey: "Software\Classes\.md\OpenWithProgids"; ValueType: string; Va
 Root: HKA; Subkey: "Software\Classes\.markdown\OpenWithProgids"; ValueType: string; ValueName: "QuietMd.Markdown"; ValueData: ""; Flags: uninsdeletevalue
 Root: HKA; Subkey: "Software\Classes\Applications\quiet_md.exe\SupportedTypes"; ValueType: string; ValueName: ".md"; ValueData: ""; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\Applications\quiet_md.exe\SupportedTypes"; ValueType: string; ValueName: ".markdown"; ValueData: ""
-; Folders: "Open with Quiet.md" in the Explorer's context menu, listed under 本机文件.
-Root: HKA; Subkey: "Software\Classes\Directory\shell\QuietMd"; ValueType: string; ValueName: ""; ValueData: "Open with Quiet.md"; Flags: uninsdeletekey
+; Folders: "Open with Quiet.Next" in the Explorer's context menu, listed under 本机文件.
+Root: HKA; Subkey: "Software\Classes\Directory\shell\QuietMd"; ValueType: string; ValueName: ""; ValueData: "Open with Quiet.Next"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\Directory\shell\QuietMd"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\quiet_md.exe,0"
 Root: HKA; Subkey: "Software\Classes\Directory\shell\QuietMd\command"; ValueType: string; ValueName: ""; ValueData: """{app}\quiet_md.exe"" ""%1"""
 
 [Run]
-Filename: "{app}\quiet_md.exe"; Description: "Launch Quiet.md"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\quiet_md.exe"; Description: "Launch Quiet.Next"; Flags: nowait postinstall skipifsilent
 ; The in-app updater installs silently with /UPDATE=1 and expects the app back afterwards.
 Filename: "{app}\quiet_md.exe"; Flags: nowait; Check: IsUpdate
 
@@ -89,5 +89,5 @@ end;
 
 procedure InitializeWizard;
 begin
-  WizardForm.Caption := 'Quiet.md';
+  WizardForm.Caption := 'Quiet.Next';
 end;

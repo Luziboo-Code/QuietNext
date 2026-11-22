@@ -6,7 +6,7 @@ cask "quietmd" do
          intel: "09c3287d58a36c89ddfb1030cce0abb627ec5f0c0996e2d8d49cb60bf72f12fd"
 
   url "https://github.com/s1dashu/quiet-md/releases/download/v#{version}/quiet-md-#{version}-macos-#{arch}.zip"
-  name "Quiet.md"
+  name "Quiet.Next"
   desc "Local-first editor for Markdown notes, documents, tables and boards"
   homepage "https://quiet.md/"
 
@@ -20,7 +20,7 @@ cask "quietmd" do
 
   app "quiet.md.app"
 
-  # The library (~/Documents/Quiet.md by default) holds the user's notes and is never removed.
+  # The library (~/Documents/Quiet.Next by default) holds the user's notes and is never removed.
   zap trash: [
     "~/Library/Application Support/quiet-md",
     "~/Library/Caches/com.s1dashu.quietmd",

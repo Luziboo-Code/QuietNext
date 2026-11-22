@@ -145,12 +145,14 @@ impl Workspace {
             .child(div().flex_1())
             .children(crate::settings::update_pill(cx));
 
-        // The nav is just 主页: 36px items, a blue tint when selected. Its
-        // icon column (x 17) is shared with 搜索 and the doc rows.
+        // The nav is 主页, 日历 and 复习: 36px items, a blue tint when selected.
+        // Its icon column (x 17) is shared with 搜索 and the doc rows.
         let home_on = self.view == View::Home;
-        let nav = div().flex_none().pt(px(4.)).pb(px(4.)).px(px(SB_X)).child(
+        let cal_on = self.view == View::Calendar;
+        let rev_on = self.view == View::Review;
+        let nav_row = |id: &'static str, glyph: &'static str, label: &'static str, on: bool, view: View, cx: &mut Context<Self>| {
             div()
-                .id("nav-home")
+                .id(id)
                 .h(px(ROW_H))
                 .pl(px(6.))
                 .pr(px(4.))
@@ -160,19 +162,22 @@ impl Workspace {
                 .cursor_pointer()
                 .text_size(px(theme::ui_font()))
                 .line_height(px(20.))
-                .when(home_on, |d| d.bg(Theme::sidebar_selected()).text_color(Theme::text()))
-                .when(!home_on, |d| d.text_color(Theme::sidebar_text()).hover(|s| s.bg(Theme::sidebar_hover())))
+                .when(on, |d| d.bg(Theme::sidebar_selected()).text_color(Theme::text()))
+                .when(!on, |d| d.text_color(Theme::sidebar_text()).hover(|s| s.bg(Theme::sidebar_hover())))
                 .child(
-                    // Selected or not, the same outline: the row's fill marks the selection.
                     div().size(px(20.)).flex_none().flex().items_center().justify_center().mr(px(9.)).child(icon(
-                        "home",
+                        glyph,
                         ROW_ICON,
                         Theme::icon(),
                     )),
                 )
-                .child(crate::settings::tr("主页", "Home"))
-                .on_click(cx.listener(|w, _, _, cx| w.show_view(View::Home, cx))),
-        );
+                .child(label)
+                .on_click(cx.listener(move |w, _, _, cx| w.show_view(view, cx)))
+        };
+        let nav = div().flex_none().pt(px(4.)).pb(px(4.)).px(px(SB_X)).flex().flex_col().gap(px(ROW_GAP))
+            .child(nav_row("nav-home", "home", crate::settings::tr("主页", "Home"), home_on, View::Home, cx))
+            .child(nav_row("nav-calendar", "calendar", crate::settings::tr("日历", "Calendar"), cal_on, View::Calendar, cx))
+            .child(nav_row("nav-review", "review", crate::settings::tr("复习", "Review"), rev_on, View::Review, cx));
 
         let mut list = div().flex().flex_col().px(px(SB_X)).pb(px(8.));
         // Pinned docs are shortcuts: they stay in 我的文档 too.

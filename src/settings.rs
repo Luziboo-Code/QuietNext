@@ -124,6 +124,18 @@ pub struct Preferences {
     pub opaque_window: bool,
     /// 外观 › 界面字号: "small" or "large"; empty is the 13pt standard.
     pub ui_font: String,
+    /// 外观 › 页宽设置: the width documents without a setting of their own use
+    /// ("wide" or "full"); empty is 默认.
+    pub page_width: String,
+    /// 复习: new cards introduced per day.
+    #[serde(default = "review_new_default")]
+    pub review_new_per_day: u32,
+    /// 复习: at most this many reviews a day.
+    #[serde(default = "review_max_default")]
+    pub review_max_per_day: u32,
+    /// 复习: target memory rate, 85 / 90 / 95.
+    #[serde(default = "review_retention_default")]
+    pub review_retention: u32,
     /// 外观 › 界面字体: the family the sidebar, menus and settings are drawn in
     /// (a system family name); empty is the platform's own sans.
     pub ui_family: String,
@@ -172,10 +184,14 @@ fn system_lang() -> Lang {
     sys_locale::get_locales().find_map(|l| lang_for_locale(&l)).unwrap_or(Lang::En)
 }
 
+fn review_new_default() -> u32 { 20 }
+fn review_max_default() -> u32 { 200 }
+fn review_retention_default() -> u32 { 90 }
+
 impl Default for Preferences {
     fn default() -> Self {
         let lang = system_lang();
-        Preferences { theme: String::new(), feishu: true, english: lang != Lang::Zh, language: lang.code().into(), remote_images: true, quick_hotkey: true, auto_update: true, appearance: String::new(), seen_version: String::new(), motion: String::new(), new_default: String::new(), last_new: String::new(), search_engine: String::new(), start_home: false, browser: String::new(), opaque_window: false, ui_font: String::new(), ui_family: String::new(), doc_family: String::new(), migrate_later: 0, find_regex: false, backspace_to_title: true }
+        Preferences { theme: String::new(), feishu: true, english: lang != Lang::Zh, language: lang.code().into(), remote_images: true, quick_hotkey: true, auto_update: true, appearance: String::new(), seen_version: String::new(), motion: String::new(), new_default: String::new(), last_new: String::new(), search_engine: String::new(), start_home: false, browser: String::new(), opaque_window: false, ui_font: String::new(), page_width: String::new(), review_new_per_day: 20, review_max_per_day: 200, review_retention: 90, ui_family: String::new(), doc_family: String::new(), migrate_later: 0, find_regex: false, backspace_to_title: true }
     }
 }
 
@@ -190,6 +206,14 @@ impl Preferences {
     pub fn set_lang(&mut self, lang: Lang) {
         self.language = lang.code().into();
         self.english = lang != Lang::Zh;
+    }
+    /// 外观 › 页宽设置: the width documents without a setting of their own use.
+    pub fn page_width(&self) -> crate::store::PageWidth {
+        match self.page_width.as_str() {
+            "wide" => crate::store::PageWidth::Wide,
+            "full" => crate::store::PageWidth::Full,
+            _ => crate::store::PageWidth::Standard,
+        }
     }
 }
 
@@ -334,13 +358,14 @@ pub(crate) fn watch_themes(cx: &mut Context<Workspace>) {
 // ---- the view
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Page { #[default] General, Appearance, Shortcuts, Library, About }
+pub enum Page { #[default] General, Appearance, Review, Shortcuts, Library, About }
 
 impl Page {
     fn title(self) -> &'static str {
         match self {
             Page::General => tr("通用", "General"),
             Page::Appearance => tr("外观", "Appearance"),
+            Page::Review => tr("复习", "Review"),
             Page::Shortcuts => tr("快捷键", "Shortcuts"),
             Page::Library => tr("文档库", "Documents"),
             Page::About => tr("关于", "About"),
@@ -350,6 +375,7 @@ impl Page {
         match self {
             Page::General => "view-settings",
             Page::Appearance => "palette",
+            Page::Review => "review",
             Page::Shortcuts => "keyboard",
             Page::Library => "storage",
             Page::About => "info",
@@ -357,9 +383,8 @@ impl Page {
     }
 }
 
-/// The sidebar list, one evenly spaced run (six rows need no unlabelled
-/// groups); `None` is 回收站 (its own view, shown with this sidebar).
-const NAV: [Option<Page>; 6] = [Some(Page::General), Some(Page::Appearance), Some(Page::Shortcuts), Some(Page::Library), None, Some(Page::About)];
+/// The sidebar list, one evenly spaced run; `None` is 回收站 (its own view).
+const NAV: [Option<Page>; 7] = [Some(Page::General), Some(Page::Appearance), Some(Page::Review), Some(Page::Shortcuts), Some(Page::Library), None, Some(Page::About)];
 
 // ---- controls (switch on the accent, 30pt buttons, grouped rows)
 
@@ -516,7 +541,7 @@ fn sample_page(t: &themes::Theme, s: f32) -> Div {
     let chip = |s: &'static str| div().px(sc(st.num("code.pad")).max(px(2.))).rounded(sc(st.num("code.radius"))).bg(st.color("code.bg").unwrap_or_else(|| st.token("code_chip")))
         .border_1().border_color(st.color("code.border").unwrap_or_else(|| st.token("code_chip_border"))).font_family(mono.clone()).text_color(st.color("code.color").unwrap_or(text)).child(s);
     let para = p(div().flex().flex_wrap().items_center())
-        .child(tr("Quiet.md 是一款", "Quiet.md is a "))
+        .child(tr("Quiet.Next 是一款", "Quiet.Next is a "))
         .child(div().font_weight(FontWeight(st.num("strong.weight"))).text_color(st.color("strong.color").unwrap_or(text)).child(tr("安静的本地笔记应用", "quiet, local notes app")))
         .child(tr("，", ", "))
         .child(tr("文档就是电脑上的文件。", "your notes are files. "))
@@ -541,7 +566,7 @@ fn sample_page(t: &themes::Theme, s: f32) -> Div {
         .child(p(div()).child(label).when(done, |d| d.text_color(st.color("done.color").unwrap_or_else(|| st.token("todo_done"))).when(st.flag("done.strike"), |d| d.line_through())));
     let quote = div().flex().gap(sc((st.num("quote.indent") - st.num("quote.bar")).max(4.)))
         .child(div().flex_none().w(sc(st.num("quote.bar")).max(px(1.))).rounded(px(1.)).bg(st.color("quote.bar-color").unwrap_or_else(|| st.token("quote_bar"))))
-        .child(p(div()).text_color(st.color("quote.color").unwrap_or(text)).when(st.flag("quote.italic"), |d| d.italic()).child(tr("每一篇指南都是用 Quiet.md 写成的，放心修改。", "Every guide is written in Quiet.md. Edit them freely.")));
+        .child(p(div()).text_color(st.color("quote.color").unwrap_or(text)).when(st.flag("quote.italic"), |d| d.italic()).child(tr("每一篇指南都是用 Quiet.Next 写成的，放心修改。", "Every guide is written in Quiet.Next. Edit them freely.")));
     let callout = div().px(sc(st.num("callout.pad-x"))).py(sc(st.num("callout.pad-y"))).rounded(sc(st.num("callout.radius")))
         .bg(st.named("callout", "light-yellow").unwrap_or_else(|| st.token("code_chip")))
         .when(st.num("callout.border") > 0., |d| d.border(sc(st.num("callout.border")).max(px(1.))).border_color(st.named("border", "yellow").unwrap_or_else(|| st.token("code_chip_border"))))
@@ -574,7 +599,7 @@ fn sample_page(t: &themes::Theme, s: f32) -> Div {
         .border_1().border_color(st.color("pre.border").unwrap_or_else(|| st.token("code_border")))
         .font_family(mono.clone()).text_size(sc(st.num("pre.size"))).line_height(sc(st.num("pre.line"))).text_color(st.color("pre.color").unwrap_or_else(|| st.token("code_text")))
         .child(code_line("1", vec![tok("# ", syn("comment")), tok(tr("备份文档库", "back up your documents"), syn("comment"))]))
-        .child(code_line("2", vec![tok("cd ", syn("function")), tok("~/Documents ", text), tok("&& ", syn("keyword")), tok("tar ", syn("function")), tok("-czf ", syn("attr")), tok("\"Quiet.tar.gz\" ", syn("string")), tok("Quiet.md", text)]))
+        .child(code_line("2", vec![tok("cd ", syn("function")), tok("~/Documents ", text), tok("&& ", syn("keyword")), tok("tar ", syn("function")), tok("-czf ", syn("attr")), tok("\"Quiet.tar.gz\" ", syn("string")), tok("Quiet.Next", text)]))
         .child(code_line("3", vec![tok("echo ", syn("function")), tok("\"done\"", syn("string"))]));
     // One column, like a page: a centred text column (the theme's width, scaled,
     // up to 760 so a wide frame isn't mostly margin) whose bottom fades into
@@ -924,6 +949,13 @@ impl Workspace {
         if p.appearance != old.appearance { apply_appearance(&p.appearance); }
         if p.doc_family != old.doc_family { crate::fonts::probe(&p.doc_family, cx); }
         if p.ui_family != old.ui_family { crate::fonts::probe(&p.ui_family, cx); }
+        if p.page_width != old.page_width {
+            let inherited = self.current.as_ref().and_then(|id| self.entries.iter().find(|e| &e.id == id)).is_some_and(|e| e.meta.width.is_none());
+            if inherited && let Some(ed) = &self.editor {
+                let width = p.page_width();
+                ed.update(cx, |e, cx| { e.page_width = width; cx.notify() });
+            }
+        }
         if p.theme_id() != old.theme_id() || p.lang() != old.lang() || p.doc_family != old.doc_family || p.ui_family != old.ui_family || sync_dark(cx) {
             refresh_all(self, cx);
         }
@@ -1039,6 +1071,7 @@ impl Workspace {
         let body = match page {
             Page::General => self.general_page(cx),
             Page::Appearance => self.appearance_page(cx),
+            Page::Review => self.review_page(cx),
             Page::Shortcuts => self.shortcut_settings(cx),
             Page::Library => self.library_page(cx),
             Page::About => self.about_page(cx),
@@ -1184,6 +1217,13 @@ impl Workspace {
                             w.set_pref(|p| p.opaque_window = !p.opaque_window, cx);
                             window.refresh();
                         }))).into_any_element(),
+                    // 页宽设置: the default for documents that have not picked
+                    // their own width; the document menu still overrides it.
+                    row(tr("页宽设置", "Page width"), Some(tr("设置文档默认页面宽度", "Setting the document width. ").into()), {
+                        let sel = match prefs().page_width.as_str() { "wide" => 1, "full" => 2, _ => 0 };
+                        segmented("page-width", &[tr("默认", "Default"), tr("较宽", "Wide"), tr("全宽", "Full")], sel,
+                            |w, i, cx| w.set_pref(|p| p.page_width = ["", "wide", "full"][i].into(), cx), cx)
+                    }).into_any_element(),
                     // 界面字号: the sidebar and this page together, so the pairs
                     // (label, description) stay in proportion.
                     row(tr("界面字号", "Interface size"), None, {
@@ -1210,6 +1250,33 @@ impl Workspace {
                 })).collect()))
                 .children(errors.into_iter().chain(warnings.into_iter().take(8).map(|w| format!("{}：{w}", tr("未生效", "Ignored")))).map(|e| div().px(px(4.)).text_size(px(theme::ui_font_small())).line_height(px(theme::ui_font_small() + 6.)).text_color(Theme::danger()).child(e)))
                 )
+            .into_any_element()
+    }
+
+    /// 复习: how many new cards and reviews a day, and the day's target.
+    fn review_page(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = prefs();
+        let stepper = |id: (&'static str, &'static str), value: u32, minus: bool, cx: &mut Context<Self>| {
+            div().flex().items_center().gap(px(8.))
+                .child(button(id.0, "−").on_click(cx.listener(move |w, _, _, cx| if minus { w.change_review_new(-1, cx) } else { w.change_review_max(-1, cx) })))
+                .child(div().w(px(44.)).flex().justify_center().text_size(px(theme::ui_font())).text_color(Theme::text()).child(value.to_string()))
+                .child(button(id.1, "+").on_click(cx.listener(move |w, _, _, cx| if minus { w.change_review_new(1, cx) } else { w.change_review_max(1, cx) })))
+        };
+        let sel = match p.review_retention { 85 => 0, 95 => 2, _ => 1 };
+        div().w_full().flex().flex_col().gap(px(28.))
+            .child(group(None, vec![
+                row(tr("每日新卡片", "New cards per day"), desc(tr("每天最多引入多少张新卡片；0 表示不引入新卡片。", "How many new cards to introduce each day; 0 turns new cards off.")),
+                    stepper(("review-new-minus", "review-new-plus"), p.review_new_per_day, true, cx)).into_any_element(),
+                row(tr("每日复习上限", "Daily review limit"), desc(tr("一天最多复习多少张，达到后当天不再安排。", "The most reviews in one day; when reached, nothing more is scheduled that day.")),
+                    stepper(("review-max-minus", "review-max-plus"), p.review_max_per_day, false, cx)).into_any_element(),
+                row(tr("目标记忆率", "Target retention"), desc(tr("越高复习越频繁，间隔越短。", "Higher targets review more often, with shorter intervals.")),
+                    segmented("review-retention", &["85%", "90%", "95%"], sel,
+                        |w, i, cx| w.set_pref(|p| p.review_retention = [85, 90, 95][i], cx), cx)).into_any_element(),
+                row(tr("打开复习", "Open review"), desc(tr("查看卡片和今天的复习进度。", "See your cards and today's progress.")),
+                    button("open-review", tr("打开", "Open")).on_click(cx.listener(|w, _, _, cx| w.show_view(View::Review, cx)))).into_any_element(),
+            ]))
+            .child(div().px(px(4.)).text_size(px(theme::ui_font_small())).line_height(px(theme::ui_font_small() + 5.)).text_color(Theme::text_caption())
+                .child(tr("卡片保存在文档库的 .quiet/review.json 中，只在本机使用。", "Cards live in the library's .quiet/review.json and stay on this computer.")))
             .into_any_element()
     }
 
@@ -1287,7 +1354,7 @@ impl Workspace {
     fn about_page(&self, cx: &mut Context<Self>) -> AnyElement {
         div().w_full().flex().flex_col().gap(px(28.)).child(div().w_full().pt(px(24.)).flex().flex_col().items_center().gap(px(10.))
             .child(img(about_icon()).size(px(88.)))
-            .child(div().text_size(px(20.)).line_height(px(26.)).font_weight(FontWeight::SEMIBOLD).child("Quiet.md"))
+            .child(div().text_size(px(20.)).line_height(px(26.)).font_weight(FontWeight::SEMIBOLD).child("Quiet.Next"))
             .child(div().text_size(px(theme::ui_font())).line_height(px(theme::ui_font() + 5.)).text_color(Theme::text_caption()).child(format!("{} {}", tr("版本", "Version"), env!("CARGO_PKG_VERSION"))))
             .child(div().text_size(px(theme::ui_font())).line_height(px(theme::ui_font() + 7.)).text_color(Theme::text_caption()).child(if cfg!(target_os = "macos") { tr("本地优先的笔记应用：无需账号，文档就是你电脑上的文件。", "Local-first notes: no account, your documents are files on your Mac.") }
                 else { tr("本地优先的笔记应用：无需账号，文档就是你电脑上的文件。", "Local-first notes: no account, your documents are files on your computer.") })))
@@ -1306,10 +1373,10 @@ pub(crate) fn update_pill(cx: &mut Context<Workspace>) -> Option<AnyElement> {
     use crate::update::State;
     let state = crate::update::state(cx);
     let (label, tip) = match &state {
-        State::Available(m) => (tr("更新", "Update").to_string(), crate::localized_format!("下载 Quiet.md {}", "Download Quiet.md {}", m.version)),
+        State::Available(m) => (tr("更新", "Update").to_string(), crate::localized_format!("下载 Quiet.Next {}", "Download Quiet.Next {}", m.version)),
         State::Downloading(m) => (format!("{:.0}%", crate::update::progress(m) * 100.), crate::localized_format!("正在下载 {}…", "Downloading {}…", m.version)),
         State::Ready(m, _) => (tr("重启更新", "Restart").to_string(), crate::localized_format!("重启后更新到 {}，打开的文档会先保存", "Restart into {}; open documents are saved first", m.version)),
-        State::Installing(m) => (tr("即将更新", "Updating").to_string(), crate::localized_format!("Quiet.md 退出后安装 {}", "{} installs when Quiet.md quits", m.version)),
+        State::Installing(m) => (tr("即将更新", "Updating").to_string(), crate::localized_format!("Quiet.Next 退出后安装 {}", "{} installs when Quiet.Next quits", m.version)),
         _ => return None,
     };
     let fill = if let State::Downloading(m) = &state { Some(crate::update::progress(m)) } else { None };
@@ -1335,11 +1402,11 @@ fn update_row(cx: &mut Context<Workspace>) -> Div {
         State::Idle => (tr("软件更新", "Software update").into(), None),
         State::Unsupported => (tr("软件更新", "Software update").into(), desc(tr("这个版本不能自动更新，请从网站下载新版本。", "This copy cannot update itself. Download new versions from the website."))),
         State::Checking => (tr("正在检查更新…", "Checking for updates…").into(), None),
-        State::Current => (tr("已是最新版本", "Quiet.md is up to date").into(), None),
+        State::Current => (tr("已是最新版本", "Quiet.Next is up to date").into(), None),
         State::Available(m) => (crate::localized_format!("新版本 {} 可用", "Version {} is available", m.version).into(), None),
         State::Downloading(m) => (crate::localized_format!("正在下载 {}… {:.0}%", "Downloading {}… {:.0}%", m.version, crate::update::progress(m) * 100.).into(), None),
-        State::Ready(m, _) => (crate::localized_format!("{} 已准备好", "{} is ready to install", m.version).into(), desc(tr("重启后完成更新，打开的文档会先保存。", "Quiet.md restarts to finish; open documents are saved first."))),
-        State::Installing(m) => (crate::localized_format!("{} 将在退出后安装", "{} installs when Quiet.md quits", m.version).into(), None),
+        State::Ready(m, _) => (crate::localized_format!("{} 已准备好", "{} is ready to install", m.version).into(), desc(tr("重启后完成更新，打开的文档会先保存。", "Quiet.Next restarts to finish; open documents are saved first."))),
+        State::Installing(m) => (crate::localized_format!("{} 将在退出后安装", "{} installs when Quiet.Next quits", m.version).into(), None),
         State::Failed(e) => (tr("更新失败", "Update failed").into(), Some(e.clone().into())),
     };
     let control = match &state {
@@ -1641,7 +1708,7 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "重试" => "Retry",
         "不再提示" => "Do not ask again",
         "放弃修改" => "Discard changes",
-        "Quiet.md · 快速笔记" => "Quiet.md · Quick note",
+        "Quiet.Next · 快速笔记" => "Quiet.Next · Quick note",
         "没有匹配结果，换个关键词试试吧" => "No results. Try another search term.",
         "本文被以下文档所引用" => "Referenced by these documents",
         "隐藏引用列表" => "Hide references",
@@ -2080,7 +2147,7 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "文档不存在" => "Document not found",
         "文档文件已不在原处，可能已被移动或删除" => "The document's file is no longer where it was. It may have been moved or deleted.",
         "文档已被另一个实例修改，未覆盖磁盘内容。请另存副本或重新载入磁盘版本" => "Another instance modified this document. The file was not overwritten. Save a copy or reload the version on disk.",
-        "这个文档库由更新版本的 Quiet.md 创建，部分内容可能无法正确显示，请升级后再编辑" => "These documents were created by a newer version of Quiet.md. Update the app before editing them.",
+        "这个文档库由更新版本的 Quiet.Next 创建，部分内容可能无法正确显示，请升级后再编辑" => "These documents were created by a newer version of Quiet.Next. Update the app before editing them.",
         _ => text,
     }
 }

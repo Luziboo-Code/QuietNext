@@ -15,9 +15,9 @@ pub(super) const BACKUP: &str = "before-folders-4";
 /// What a move in progress has written, to undo it.
 const PLAN: &str = "migration.json";
 /// What the old layout kept at the top of the library.
-const OLD: &[&str] = &["docs", "trash", "index.json", "index.json.bak", "format.json", "settings.json", "preferences.json", "preferences.json.tmp", "shortcuts.json", "emoji.json", "themes", "index.before-folders.json"];
+const OLD: &[&str] = &["docs", "trash", "index.json", "index.json.bak", "format.json", "settings.json", "preferences.json", "preferences.json.tmp", "shortcuts.json", "emoji.json", "calendar.json", "review.json", "themes", "index.before-folders.json"];
 /// Old files the new layout keeps, in `.quiet/`.
-const KEPT: &[&str] = &["settings.json", "preferences.json", "shortcuts.json", "emoji.json", "themes"];
+const KEPT: &[&str] = &["settings.json", "preferences.json", "shortcuts.json", "emoji.json", "calendar.json", "review.json", "themes"];
 
 /// Marks a library the user took back to the old layout: not moved again without asking.
 const RESTORED: &str = "restored.json";
@@ -244,7 +244,7 @@ pub(super) fn run(root: &Path, warnings: &mut Vec<String>) -> Result<MigrationRe
     let report = |docs, folders| MigrationReport { docs, folders, backup: internal.join(BACKUP) };
     if internal.join("format.json").fs_is_file() { finish(root, warnings); return Ok(report(0, 0)); }
     let format = reread::<FormatMarker>(&root.join("format.json")).map_or(0, |m| m.format);
-    anyhow::ensure!(format <= 3, "这个文档库由更新版本的 Quiet.md 创建，请升级后再打开");
+    anyhow::ensure!(format <= 3, "这个文档库由更新版本的 Quiet.Next 创建，请升级后再打开");
     if let Some(plan) = reread::<Plan>(&internal.join(PLAN)) {
         undo(root, &plan);
         let _ = crate::vfs::remove_file(internal.join(PLAN));
@@ -436,7 +436,7 @@ fn migrate(root: &Path, format: u32, plan: &mut Plan, warnings: &mut Vec<String>
     dirs.sort_by_key(|d| (d.matches('/').count(), d.clone()));
     plan.dirs = dirs.clone();
     plan.files = contents.iter().map(|(r, _)| r.clone()).collect();
-    plan.internal = ["index.json", "trash", "settings.json", "preferences.json", "shortcuts.json", "emoji.json", "themes"].iter()
+    plan.internal = ["index.json", "trash", "settings.json", "preferences.json", "shortcuts.json", "emoji.json", "calendar.json", "review.json", "themes"].iter()
         .filter(|n| !internal.join(n).fs_exists()).map(|n| n.to_string()).collect();
     plan.assets = hide && assets.fs_is_dir();
     write_atomic(&internal.join(PLAN), &serde_json::to_vec_pretty(plan)?)?;

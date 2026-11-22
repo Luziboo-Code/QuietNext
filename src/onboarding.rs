@@ -1,7 +1,7 @@
-//! 首次启动: a few seconds of dithered film with Quiet glowing in, then a
-//! straight cut to two pages on a drifting gradient —
-//! where the library lives and the quick-note shortcut, then notes to bring
-//! along. ⌘⌥⇧O and Settings › About replay it without touching the library. Nothing is written until 开始使用;
+//! 首次启动: the welcome pages sit on a plain white page from the first frame
+//! (a dark drifting gradient in dark mode): where the library lives and the
+//! quick-note shortcut, then notes to bring along. ⌘⌥⇧O and Settings › About
+//! replay it without touching the library. Nothing is written until 开始使用;
 //! closing the window before that quits without a library.
 
 use fdl_core::vfs::{PathExt as _, KindExt as _};
@@ -119,6 +119,8 @@ pub fn wordmark(alpha: f32) -> Div {
 
 /// The film alone for a second, Quiet glowing in, then the pages straight
 /// over the film, which keeps playing behind them.
+/// The opening film is off: the welcome pages are white from the first frame.
+const INTRO_FILM: bool = false;
 const HOLD: f32 = 2.9;
 const MARK_IN: (f32, f32) = (1.0, 1.8);
 /// Found folders shown before 再显示.
@@ -127,15 +129,16 @@ const FOUND_SHOWN: usize = 4;
 /// The backdrop's pace: slow drift, so 30 frames a second is smooth enough.
 const FLOW_FPS: f32 = 30.;
 
-/// Soft light on a near-white page, frosted with grain: sky blue above,
-/// cloud and grass green below, each patch a blurred circle wandering on its
-/// own slow loop. Colours measured from the website's hillside picture
-/// (site/public/bg.png).
+/// The plain page after the film: white in light mode; in dark mode, soft
+/// light with grain — sky blue above, cloud and grass green below, each patch
+/// a blurred circle wandering on its own slow loop. Colours measured from the
+/// website's hillside picture (site/public/bg.png).
 fn paint_backdrop(b: Bounds<Pixels>, t: f32, window: &mut Window) {
     use std::f32::consts::TAU;
     let (x, y, w, h) = (f32::from(b.left()), f32::from(b.top()), f32::from(b.size.width), f32::from(b.size.height));
     let dark = theme::dark();
-    window.paint_quad(fill(b, if dark { Theme::bg_body() } else { rgb(0xfdfdfd).into() }));
+    window.paint_quad(fill(b, if dark { Theme::bg_body() } else { rgb(0xffffff).into() }));
+    if !dark { return }
     // Centre (shares of the window), diameter (share of the width), colour, strength, loop lengths in seconds.
     // Laid out like the film's hillside, which plays just before: sky over
     // the top half, a pale cloud at the left of the horizon, grass over the
@@ -291,7 +294,7 @@ pub(crate) fn ubiquitous(path: &Path) -> bool {
     }
 }
 
-/// A path as people know it: 文稿 › Quiet.md, iCloud 云盘 › Notes, Dropbox › …;
+/// A path as people know it: 文稿 › Quiet.Next, iCloud 云盘 › Notes, Dropbox › …;
 /// deep ones keep their first and last two names.
 /// Where a found folder lives, in a few words: its app's iCloud container
 /// reads as iCloud 云盘, anything else as its short path.
@@ -327,10 +330,10 @@ fn short_path(p: &Path) -> String {
 
 /// A picked folder as a library, used as it is: its Markdown and DocxXML
 /// files show up as documents (#282). Only the home folder and a disk's
-/// root get a Quiet.md folder inside; scanning all of either is never meant.
+/// root get a Quiet.Next folder inside; scanning all of either is never meant.
 pub(crate) fn library_in(dir: PathBuf) -> PathBuf {
     let broad = dir.parent().is_none() || dirs::home_dir().is_some_and(|h| h == dir);
-    if broad && !crate::store::Store::is_library(&dir) { dir.join("Quiet.md") } else { dir }
+    if broad && !crate::store::Store::is_library(&dir) { dir.join("Quiet.Next") } else { dir }
 }
 
 // ---- the view
@@ -405,10 +408,10 @@ impl Onboarding {
             let _ = this.update(cx, |w, cx| { w.chosen = vec![true; found.len()]; w.found = Some(found); cx.notify(); });
         }).detach();
         let now = Instant::now();
-        let cut_at = now + Duration::from_secs_f32(HOLD);
+        let cut_at = now + if INTRO_FILM { Duration::from_secs_f32(HOLD) } else { Duration::ZERO };
         Onboarding {
             focus,
-            film: film::decode(), film_tex: None, opened: now, cut_at, replay, page: Page::Setup, root,
+            film: INTRO_FILM.then(film::decode).flatten(), film_tex: None, opened: now, cut_at, replay, page: Page::Setup, root,
             lang: crate::settings::prefs().lang(), lang_menu: None, lang_anchor: Default::default(),
             hotkey: crate::shortcuts::global_key(), recording: false, hotkey_error: None,
             picked: vec![], found: None, show_all: false, chosen: vec![], error: None, scripted, incoming: Some(incoming), importing: None, _ticker: ticker,
@@ -609,11 +612,11 @@ impl Onboarding {
                     .on_click(cx.listener(|w, _, window, cx| w.start_recording(window, cx))))
         });
         // Top to bottom: the app's icon, its name, one line, then the settings.
-        let over = self.film.is_some();
+        let over = theme::dark();
         div().size_full().flex().flex_col().items_center().justify_center().px(px(48.)).pb(px(40.))
             .child(div().flex().flex_col().items_center().gap(px(12.))
                 .child(div().size(px(64.)).rounded(px(15.)).overflow_hidden().shadow(theme::shadow_card()).child(img(crate::settings::about_icon()).size_full()))
-                .child(lifted(over, 56., 64., true, false, "Quiet.md"))
+                .child(lifted(over, 56., 64., true, false, "Quiet.Next"))
                 .child(lifted(over, 15., 23., false, true, tr("一个又快又安静的本地笔记应用。", "A fast, quiet, local notes app."))))
             .child(div().w_full().max_w(px(560.)).mt(px(40.)).flex().flex_col().gap(px(12.))
                 .child(lang)
@@ -663,7 +666,7 @@ impl Onboarding {
         }
         // Folders other apps keep notes in; nothing at all while looking or
         // when there are none. A long list shows its first few until 再显示.
-        let over = self.film.is_some();
+        let over = theme::dark();
         let found = self.found.as_ref().filter(|f| !f.is_empty()).map(|found| {
             let shown = if self.show_all || found.len() <= FOUND_SHOWN + 1 { found.len() } else { FOUND_SHOWN };
             let mut rows: Vec<AnyElement> = found.iter().take(shown).enumerate().map(|(i, f)| {
@@ -705,7 +708,7 @@ impl Onboarding {
     fn chrome(&self, cx: &mut Context<Self>) -> Div {
         let n = self.imports().len();
         let label = match self.page { Page::Setup => tr("下一步", "Next"), Page::Import if n == 0 => tr("开始使用", "Get started"), Page::Import => tr("导入并开始", "Import and start") };
-        let over = self.film.is_some();
+        let over = theme::dark();
         let mark = |on: bool| div().w(px(20.)).h(px(3.)).rounded(px(2.)).bg(match (over, on) {
             (true, true) => gpui::white(), (true, false) => hsla(0., 0., 1., 0.4), (false, true) => Theme::text(), (false, false) => Theme::fill_hover_strong(),
         });
@@ -853,11 +856,11 @@ impl Render for Onboarding {
         // Before the cut the film is alone; after it, the pages sit on it.
         let film_up = now < self.cut_at && self.film.is_some();
         if film_up || self.importing.is_some() { window.request_animation_frame(); }
-        // Without the film (it failed to decode) the pages sit on the drifting gradient.
+        // Without the film (it failed to decode) the pages sit on the plain page.
         let backdrop = canvas(|b, _, _| b, move |_, b, window, _| paint_backdrop(b, t, window)).absolute().inset_0();
         let page = if self.page == Page::Setup { self.setup_page(cx) } else { self.import_page(cx) };
-        // A new texture only when the film reaches another frame; the old one leaves the GPU.
-        if let Some(f) = &self.film {
+        // A new texture only while the film shows and reaches another frame.
+        if film_up && let Some(f) = &self.film {
             let n = f.frames.len();
             let k = (t * film::FILM_FPS) as usize % (2 * n - 2).max(1);
             let k = if k < n { k } else { 2 * n - 2 - k };
@@ -867,14 +870,17 @@ impl Render for Onboarding {
             }
         }
         let frame = self.film_tex.as_ref().map(|(_, t)| t.clone());
+        // The film plays alone; the pages sit on the plain page, not over it.
+        let over_film = if film_up { frame } else { None };
         // Quiet glows in as the film ends.
         let mark = if film_up { ((t - MARK_IN.0) / (MARK_IN.1 - MARK_IN.0)).clamp(0., 1.) } else { 0. };
         div().id("onboarding").size_full().relative().overflow_hidden()
+            .bg(if theme::dark() { Theme::bg_body() } else { gpui::white() })
             .font_family(theme::ui_family()).text_color(Theme::text())
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|w, ev: &KeyDownEvent, window, cx| w.key_down(ev, window, cx)))
-            .when(frame.is_none(), |d| d.child(backdrop))
-            .children(frame.map(|tex| canvas(|b, _, _| b, move |_, b, window, _| film::paint_texture(tex, b, window)).absolute().inset_0()))
+            .when(over_film.is_none(), |d| d.child(backdrop))
+            .children(over_film.map(|tex| canvas(|b, _, _| b, move |_, b, window, _| film::paint_texture(tex, b, window)).absolute().inset_0()))
             .when(!film_up, |d| d.child(div().absolute().inset_0().child(page)).child(self.chrome(cx)))
             // The film alone: a click anywhere brings the pages now.
             .when(film_up, |d| d.child(div().id("onb-cut").absolute().inset_0().occlude().on_mouse_down(MouseButton::Left, cx.listener(|w, _, _, cx| { w.cut(cx); }))))
@@ -902,9 +908,9 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("notes.md"), "# Notes").unwrap();
         assert_eq!(super::library_in(dir.clone()), dir);
-        assert_eq!(super::library_in("/".into()), Path::new("/Quiet.md"));
+        assert_eq!(super::library_in("/".into()), Path::new("/Quiet.Next"));
         let home = dirs::home_dir().unwrap();
-        assert_eq!(super::library_in(home.clone()), home.join("Quiet.md"));
+        assert_eq!(super::library_in(home.clone()), home.join("Quiet.Next"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

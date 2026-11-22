@@ -10,6 +10,7 @@ mod app;
 #[cfg(unix)]
 mod big_alloc;
 mod board;
+mod calendar;
 #[cfg(unix)]
 #[global_allocator]
 static ALLOC: big_alloc::Alloc = big_alloc::Alloc;
@@ -47,6 +48,7 @@ mod native_header;
 #[path = "native_header_fallback.rs"]
 mod native_header;
 mod printing;
+mod review;
 mod search;
 mod sidebar;
 mod local_files;
@@ -128,7 +130,7 @@ pub(crate) fn main_window_options(scripted: bool, at: Option<Bounds<Pixels>>, cx
         app_id: Some(crate::APP_ID.into()),
         window_decorations: if cfg!(target_os = "linux") { Some(WindowDecorations::Client) } else { None },
         titlebar: Some(TitlebarOptions {
-            title: Some("Quiet.md".into()),
+            title: Some("Quiet.Next".into()),
             appears_transparent: cfg!(any(target_os = "macos", target_os = "windows")),
             traffic_light_position: Some(point(px(20.), px(app::HEADER_H / 2. - 7.))),
         }),
