@@ -1336,7 +1336,8 @@ impl Workspace {
         }).collect();
         let fields = |e: Entity<TextField>| div().w_full().flex().items_center().rounded(px(8.)).bg(Theme::fill_hover()).child(e);
         let body_box = div().w_full().h(px(220.)).px(px(8.)).py(px(6.)).flex().rounded(px(8.)).border_1().border_color(Theme::line_border()).bg(Theme::window()).child(self.template_body_field.clone());
-        let editing_now = editing.filter(|i| *i < list.len());
+        // The open template: an index at the end of the list is one being written.
+        let editing_now = editing.filter(|i| *i <= list.len());
         div().w_full().flex().flex_col().gap(px(28.))
             .child(group(None, vec![
                 row(tr("插入模板", "Insert a template"), Some(crate::localized_format!("在笔记里按 {}，从列表中选择一个模板插入到光标处。", "Press {} in a note and pick one from the list to insert it at the caret.", hint).into()),
@@ -1359,41 +1360,59 @@ impl Workspace {
                 vec![div().px(px(16.)).py(px(28.)).flex().justify_center().text_size(px(theme::ui_font_small())).text_color(Theme::text_caption()).child(tr("还没有模板", "No templates yet")).into_any_element()]
             } else { rows }))
             .children(editing_now.map(|i| {
-                let title: SharedString = { let n = list[i].name.trim().to_string(); if n.is_empty() { tr("未命名模板", "Untitled template").into() } else { n.into() } };
-                group(Some(tr("编辑模板", "Edit template")), vec![
+                let heading = if i < list.len() { tr("编辑模板", "Edit template") } else { tr("新建模板", "New template") };
+                group(Some(heading), vec![
                     div().w_full().px(px(16.)).py(px(10.)).flex().flex_col().gap(px(6.))
                         .child(caption(tr("名称", "Name")))
                         .child(fields(self.template_name_field.clone())).into_any_element(),
                     div().w_full().px(px(16.)).py(px(10.)).flex().flex_col().gap(px(6.))
                         .child(caption(tr("内容", "Body")))
                         .child(body_box).into_any_element(),
-                    div().w_full().px(px(16.)).py(px(10.)).flex().items_center().justify_between().gap(px(12.))
+                    // 保存 / 取消 sit on their own line: the variable hint is long
+                    // enough to fill a row by itself in every language.
+                    div().w_full().px(px(16.)).py(px(10.)).flex().flex_col().gap(px(10.))
                         .child(div().text_size(px(theme::ui_font_small())).line_height(px(theme::ui_font_small() + 5.)).text_color(Theme::text_caption())
                             .child(crate::localized_format!("可用变量：{}。插入时会自动替换。", "Available variables: {}. They are filled in when inserted.",
                                 crate::templates::VARIABLES.iter().map(|(k, v)| format!("{k}（{v}）")).collect::<Vec<_>>().join("、"))))
-                        .child(div().flex().items_center().gap(px(8.))
+                        .child(div().flex().items_center().justify_end().gap(px(8.))
                             .child(link_button("template-cancel", tr("取消", "Cancel")).on_click(cx.listener(|w, _, _, cx| w.edit_template_stop(cx))))
-                            .child(button("template-save", tr("保存", "Save")).on_click(cx.listener(move |w, _, _, cx| w.save_template(i, cx))))).into_any_element(),
-                ]).child(div().px(px(4.)).text_size(px(theme::ui_font_small())).text_color(Theme::text_caption()).child(title)).into_any_element()
+                            .child(ui::primary_button("template-save", tr("保存", "Save")).on_click(cx.listener(move |w, _, _, cx| w.save_template(i, cx)))))
+                        .into_any_element(),
+                ]).into_any_element()
             }))
             .into_any_element()
     }
 
-    /// 模板 › 新建: an empty template, selected for editing.
+    /// 模板 › 新建: an empty template, shown for editing. It joins the list on
+    /// 保存, so an abandoned one never leaves an「未命名模板」behind.
     pub(crate) fn new_template(&mut self, cx: &mut Context<Self>) {
-        let mut list = prefs().templates;
-        list.push(crate::templates::Template::default());
-        let mut p = prefs();
-        p.templates = list.clone();
-        if let Err(e) = save(&p) { return self.template_error(&e, cx) }
+        if self.template_index.is_some() {
+            // 保存 the open one first, so its edits are not lost to the new row.
+            if let Some(open) = self.template_index { self.save_template(open, cx); }
+        }
         self.template_name_field.update(cx, |f, cx| f.set_text("", cx));
         self.template_body_field.update(cx, |f, cx| f.set_text("", cx));
-        self.template_index = Some(list.len() - 1);
+        // An index past the end: 保存 appends.
+        self.template_index = Some(prefs().templates.len());
         cx.notify();
     }
 
-    /// 模板 › a row: load it into the fields.
+    /// 模板 › a row: load it into the fields. The one open before is written
+    /// back first, so picking another row never loses what was typed.
     pub(crate) fn edit_template(&mut self, index: usize, cx: &mut Context<Self>) {
+        if self.template_index == Some(index) { return }
+        // An index at the end of the list is a new template: it joins the list
+        // only through 保存, which the row click skips.
+        if let Some(open) = self.template_index.filter(|i| *i < prefs().templates.len()) {
+            let name = self.template_name_field.read(cx).text.clone();
+            let body = self.template_body_field.read(cx).text.clone();
+            let mut p = prefs();
+            if let Some(t) = p.templates.get_mut(open) {
+                t.name = name.trim().to_string();
+                t.body = body;
+                if let Err(e) = save(&p) { return self.template_error(&e, cx) }
+            }
+        }
         let Some(t) = prefs().templates.get(index).cloned() else { return };
         self.template_name_field.update(cx, |f, cx| f.set_text(&t.name, cx));
         self.template_body_field.update(cx, |f, cx| f.set_text(&t.body, cx));
@@ -1406,14 +1425,18 @@ impl Workspace {
         cx.notify();
     }
 
-    /// 模板 › 保存: write the name and body back.
+    /// 模板 › 保存: write the name and body back. An index at the end of the
+    /// list is a new template (see [`Self::new_template`]).
     pub(crate) fn save_template(&mut self, index: usize, cx: &mut Context<Self>) {
         let name = self.template_name_field.read(cx).text.clone();
         let body = self.template_body_field.read(cx).text.clone();
+        // A new template needs something to be inserted: refuse an empty one.
+        if name.trim().is_empty() && body.trim().is_empty() {
+            return self.show_toast_kind(ui::ToastKind::Error, tr("请填写模板名称或内容", "Enter a template name or body"), cx);
+        }
         let mut p = prefs();
-        let Some(t) = p.templates.get_mut(index) else { return self.edit_template_stop(cx) };
-        t.name = name.trim().to_string();
-        t.body = body;
+        let t = crate::templates::Template { name: name.trim().to_string(), body };
+        if index < p.templates.len() { p.templates[index] = t } else { p.templates.push(t) }
         if let Err(e) = save(&p) { return self.template_error(&e, cx) }
         self.template_index = None;
         self.show_toast(tr("模板已保存", "Template saved"), cx);

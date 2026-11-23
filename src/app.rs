@@ -2671,6 +2671,32 @@ pub(crate) fn check_templates(cx: &mut App) {
     }).unwrap();
     // Leave the user's library as it was.
     let mut p = crate::settings::prefs();
+    p.templates = saved.templates.clone();
+    let _ = crate::settings::save(&p);
+    // 设置 › 模板: 新建 joins the list only on 保存, and switching rows keeps edits.
+    handle.update(cx, |ws, _, cx| {
+        ws.new_template(cx);
+        assert!(ws.template_index.is_some(), "新建 did not open the fields");
+        assert_eq!(crate::settings::prefs().templates.len(), saved.templates.len(), "新建 wrote an empty template to disk");
+        ws.template_name_field.update(cx, |f, cx| f.set_text("Draft", cx));
+        ws.template_body_field.update(cx, |f, cx| f.set_text("## Draft", cx));
+        let idx = ws.template_index.expect("the new template");
+        ws.save_template(idx, cx);
+        let saved_now = crate::settings::prefs().templates;
+        assert_eq!(saved_now.len(), saved.templates.len() + 1, "保存 did not add the template");
+        assert_eq!(saved_now.last().map(|t| t.name.as_str()), Some("Draft"));
+        // Editing an existing template and switching rows keeps the edit.
+        ws.edit_template(0, cx);
+        ws.template_body_field.update(cx, |f, cx| f.set_text("## Changed", cx));
+        ws.edit_template(1, cx);
+        assert_eq!(crate::settings::prefs().templates[0].body, "## Changed", "switching rows dropped the edit");
+        // 取消 leaves the stored template alone.
+        ws.template_body_field.update(cx, |f, cx| f.set_text("## Never saved", cx));
+        ws.edit_template_stop(cx);
+        assert_eq!(crate::settings::prefs().templates[1].body, saved.templates[1].body, "取消 wrote the draft");
+    }).unwrap();
+    // Put the list back.
+    let mut p = crate::settings::prefs();
     p.templates = saved.templates;
     let _ = crate::settings::save(&p);
     eprintln!("templates: PASS; inserted {:?}", out.lines().take(3).collect::<Vec<_>>());
