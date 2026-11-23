@@ -14,9 +14,9 @@ use gpui::{prelude::FluentBuilder, *};
 const ROW_MENU_W: f32 = 180.;
 const ROW_ITEM: f32 = crate::ui::MENU_ROW_H;
 const ROW_DIVIDER: f32 = 11.;
-const ROW_ITEMS: usize = 9;
+const ROW_ITEMS: usize = 10;
 const ROW_DIVIDERS: usize = 2;
-const DOWNLOAD_INDEX: usize = 5;
+const DOWNLOAD_INDEX: usize = 6;
 const DIVIDERS_BEFORE_DOWNLOAD: usize = 1;
 
 const fn row_menu_height(items: usize, dividers: usize) -> f32 {
@@ -27,8 +27,8 @@ const fn row_sub_top(menu_top: f32) -> f32 {
     menu_top + DOWNLOAD_INDEX as f32 * ROW_ITEM + DIVIDERS_BEFORE_DOWNLOAD as f32 * ROW_DIVIDER
 }
 
-const _: () = assert!(row_menu_height(ROW_ITEMS, ROW_DIVIDERS) == 324.);
-const _: () = assert!(row_sub_top(0.) == 171.);
+const _: () = assert!(row_menu_height(ROW_ITEMS, ROW_DIVIDERS) == 356.);
+const _: () = assert!(row_sub_top(0.) == 203.);
 
 /// Sidebar geometry (measured from the window edge), shared by the
 /// document sidebar and 设置's: selection pills start 14pt in, every row is
@@ -644,7 +644,7 @@ impl Workspace {
         let float = key == "doc" && !lib_batch && self.rename.as_ref().is_none_or(|r| r.id != e.id);
         let menu_open = self.row_menu.as_ref().is_some_and(|m| m.id == e.id && !m.batch && m.pos.x < px(0.)) || (folder && self.create_menu.as_ref().is_some_and(|(p, _)| p.as_deref() == Some(e.id.as_str())));
         let give = if float { (if folder { 74. } else { 28. }) * if menu_open { 1. } else { self.folder_drag.reveal(&e.id) } } else { 0. };
-        let selected = (self.view == View::Doc && self.current.as_deref() == Some(e.id.as_str())) || (self.view == View::Folder && self.folder_current.as_deref() == Some(e.id.as_str()));
+        let selected = (self.view == View::Doc && self.open_docs().iter().any(|(_, id)| id == &e.id)) || (self.view == View::Folder && self.folder_current.as_deref() == Some(e.id.as_str()));
         let renaming = self.rename.as_ref().filter(|r| r.id == e.id).map(|r| r.field.clone());
         let title = match renaming {
             // The field opens with the text exactly where the name was (2 + 1 + 6 = the
@@ -823,6 +823,7 @@ impl Workspace {
         let (dup, mv, path, pin, star, dl, ren, del) = (m.id.clone(), m.id.clone(), m.id.clone(), m.id.clone(), m.id.clone(), m.id.clone(), m.id.clone(), m.id.clone());
         let pdf = m.id.clone();
         let new_window = m.id.clone();
+        let split = m.id.clone();
         let sub_bounds = self.row_sub_bounds.clone();
         // The menu follows its longest translation too (#225); its rendered
         // width (from the previous frame — a submenu only opens after one)
@@ -851,6 +852,14 @@ impl Workspace {
                         let id = new_window.clone();
                         cx.defer(move |cx| crate::quick_note::open_document(Some(id), cx));
                         cx.notify();
+                    })),
+            )
+            .child(
+                item("rm-split", "view-grid", crate::settings::tr("分屏打开", "Open in split view"))
+                    .on_hover(set_sub(false))
+                    .on_click(cx.listener(move |w, _, window, cx| {
+                        w.row_menu = None;
+                        w.open_split(Some(&split), window, cx);
                     })),
             )
             .child(

@@ -82,6 +82,7 @@ On first launch, Quiet.md looks for your Obsidian, Logseq, iA Writer and Typora 
 ### And more
 
 - **Version history**: every note keeps snapshots as it saves (20 by default, up to 30). Open one to see what changed in place, restore it in one click, or give it a name.
+- **Split view**: `…` › Open in split view (or `⌘⇧\`) puts two notes side by side in one window, each edited and saved on its own.
 - **Quick notes**: on macOS, a global shortcut (`⌥ Space` by default) opens a small note window over any app.
 - **Your look**: four built-in styles — Craft, Feishu, Notion and Obsidian — each with a dark variant, or your own CSS ([docs/THEMES.md](docs/THEMES.md)). Choose the interface and document fonts.
 - **Your keys**: press `⌘ /` to see every shortcut, and rebind any of them. On Windows and Linux, Ctrl stands in for ⌘ and Alt for ⌥.
@@ -142,7 +143,7 @@ Thanks to everyone who has helped build Quiet.md. Issues and pull requests are w
 
 ## Recent updates
 
-- **0.1.14** (Nov 21): find and replace with regular expressions. Obsidian `[[wikilinks]]` open the note they point to. A Turkish interface, and Arabic laid out right to left. Choose the interface and document fonts, and clear out images and files no note uses. Search keeps up with large libraries, and deleting many notes is quicker. A setting for whether Backspace returns to the title; on Windows and Linux, Copy as Markdown is now Ctrl+Shift+M.
+- **0.1.14** (Nov 21): find and replace with regular expressions. Obsidian `[[wikilinks]]` open the note they point to. A Turkish interface, and Arabic laid out right to left. Choose the interface and document fonts, and clear out images and files no note uses. Search keeps up with large libraries, and deleting many notes is quicker. A setting for whether Backspace returns to the title; on Windows and Linux, Copy as Markdown is now Ctrl+Shift+M. Split view puts two notes side by side in one window.
 - **0.1.13** (Nov 17): boards — a whiteboard ported from Excalidraw, as a block in a note or a standalone `.excalidraw` file, fast with 10,000 shapes. Version history for every note (… › Version history). French and Arabic interfaces. Copy as Markdown, copy a file's path, and switch the library folder in Settings. Pasted web images are saved into the library. Less memory on picture-heavy pages and smoother sidebar scrolling.
 - **0.1.12** (Nov 14): drag files from Finder, or a file from Files on this computer, straight into a sidebar folder or between rows; the whole page lights up as a drop target. Redesigned Home cards with squircle corners, an Open in Finder menu, breadcrumbs that start at My documents, a minimum window width that keeps room for the note, and a solid sidebar in full screen. Fixes a hang when creating a document in a folder.
 - **0.1.11** (Nov 13): the library is now real folders, with files named by title; older libraries move over automatically, with a backup. A new first launch that sets the language, library location and quick-note shortcut and imports notes from Obsidian and other Markdown apps. Japanese, Spanish and Korean interfaces; display math in Markdown; documents reopen where you left off; faster launch and lower memory use.

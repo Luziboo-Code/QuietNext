@@ -901,7 +901,7 @@ pub fn continuous_surface(radius: f32, color: Hsla) -> Div {
     }).absolute().inset_0())
 }
 
-pub fn header_icon(id: &'static str, name: &'static str) -> Stateful<Div> {
+pub fn header_icon(id: impl Into<ElementId>, name: &'static str) -> Stateful<Div> {
     div().id(id).no_drag().size(px(crate::app::HEADER_ACTIONS_H)).rounded(px(8.)).flex_none().flex().items_center().justify_center().cursor_pointer()
         .hover(|s| s.bg(Theme::fill_hover())).active(|s| s.bg(Theme::fill_pressed())).child(icon(name, 18., Theme::icon()))
 }

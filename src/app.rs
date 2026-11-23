@@ -25,7 +25,7 @@ const SAVE_DELAY: Duration = Duration::from_millis(500);
 const SAVE_MAX_DELAY: Duration = Duration::from_secs(2);
 
 actions!(workspace, [NewDoc, OpenFile, OpenFolder, ImportDoc, ImportFolder, ToggleSidebar, FocusSearch, FindInDoc, ReplaceInDoc, OpenSettings, OpenAbout, CheckForUpdates, GoHome, CloseWindow, Quit,
-    ReplayOnboarding, HideApp, HideOthers, ShowAll, Minimize, Zoom, ToggleFullScreen]);
+    ReplayOnboarding, HideApp, HideOthers, ShowAll, Minimize, Zoom, ToggleFullScreen, SplitView]);
 
 /// The menu bar, in the interface language.
 pub fn set_menus(cx: &mut App) {
@@ -115,6 +115,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-j", FocusSearch, None),
         KeyBinding::new("cmd-f", FindInDoc, None),
         KeyBinding::new("cmd-shift-h", ReplaceInDoc, None),
+        KeyBinding::new("cmd-shift-\\", SplitView, None),
         KeyBinding::new("cmd-q", Quit, None),
     ]);
     // macOS app and window keys. ⌥⌘H (隐藏其他) stays with the editor's
@@ -140,7 +141,7 @@ pub fn bind_keys(cx: &mut App) {
             cx.defer(move |cx| {
                 if let Err(e) = handle.update(cx, |ws, window, cx| {
                     crate::quick_note::persist(cx);
-                    if ws.save_before(cx, |_, window, _| window.remove_window()) { window.remove_window(); }
+                    if ws.save_all_before(cx, |_, window, _| window.remove_window()) { window.remove_window(); }
                 }) { eprintln!("无法关闭笔记窗口：{e}"); }
             });
         }
@@ -157,7 +158,7 @@ pub fn quit(cx: &mut App) {
         .windows()
         .into_iter()
         .filter_map(|w| w.downcast::<Workspace>())
-        .map(|w| w.update(cx, |ws, _, cx| ws.save_before(cx, |_, _, cx| cx.defer(quit))).unwrap_or(false))
+        .map(|w| w.update(cx, |ws, _, cx| ws.save_all_before(cx, |_, _, cx| cx.defer(quit))).unwrap_or(false))
         .fold(true, |ready, saved| ready & saved);
     if ready {
         cx.quit();
@@ -173,7 +174,7 @@ pub fn switch_library(root: std::path::PathBuf, cx: &mut App) {
         .windows()
         .into_iter()
         .filter_map(|w| w.downcast::<Workspace>())
-        .map(|w| { let again = root.clone(); w.update(cx, |ws, _, cx| ws.save_before(cx, move |_, _, cx| cx.defer(move |cx| switch_library(again, cx)))).unwrap_or(false) })
+        .map(|w| { let again = root.clone(); w.update(cx, |ws, _, cx| ws.save_all_before(cx, move |_, _, cx| cx.defer(move |cx| switch_library(again, cx)))).unwrap_or(false) })
         .fold(true, |ready, saved| ready & saved);
     if !ready { return }
     let prefs = crate::store::Store::internal_dir().join("preferences.json");
@@ -188,9 +189,10 @@ pub fn switch_library(root: std::path::PathBuf, cx: &mut App) {
     cx.restart();
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum SaveStatus {
     /// Freshly opened, nothing saved this session: show the modification time.
+    #[default]
     Idle,
     Saved,
     Saving,
@@ -267,6 +269,69 @@ pub struct Rename {
     _subs: Vec<Subscription>,
 }
 
+/// 分屏: one document's window state. The window keeps two of these: the one
+/// in `Workspace`'s own fields (always the active pane) and `Workspace::split`
+/// while 分屏 is open. [`Workspace::activate`] swaps them.
+#[derive(Default)]
+pub struct PaneState {
+    pub current: Option<String>,
+    pub editor: Option<Entity<Editor>>,
+    pub editor_sub: Option<Subscription>,
+    pub unsaved: bool,
+    dirty_since: Option<Instant>,
+    save_task: Option<Task<()>>,
+    pub status: SaveStatus,
+    /// Last-frame bounds of this pane's header "…" button, to hang its menu from.
+    pub more_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    /// This pane's "…" menu, its open submenu, 文档信息 and 版本历史.
+    pub doc_menu: bool,
+    pub doc_sub: Option<DocSub>,
+    pub doc_info: Option<DocInfo>,
+    pub history: Option<crate::history::HistoryView>,
+    pub preview: Option<crate::history::Preview>,
+    pub version_rename: Option<crate::history::VersionRename>,
+}
+
+impl PaneState {
+    /// Everything the window tracks for one document, moved out of it.
+    fn take_from(w: &mut Workspace) -> Self {
+        Self {
+            current: w.current.take(),
+            editor: w.editor.take(),
+            editor_sub: w.editor_sub.take(),
+            unsaved: std::mem::take(&mut w.unsaved),
+            dirty_since: w.dirty_since.take(),
+            save_task: w.save_task.take(),
+            status: std::mem::replace(&mut w.status, SaveStatus::Idle),
+            more_bounds: w.more_btn_bounds.clone(),
+            doc_menu: std::mem::take(&mut w.doc_menu),
+            doc_sub: w.doc_sub.take(),
+            doc_info: w.doc_info.take(),
+            history: w.history.take(),
+            preview: w.preview.take(),
+            version_rename: w.version_rename.take(),
+        }
+    }
+
+    /// Make this the active pane.
+    fn install(self, w: &mut Workspace) {
+        w.current = self.current;
+        w.editor = self.editor;
+        w.editor_sub = self.editor_sub;
+        w.unsaved = self.unsaved;
+        w.dirty_since = self.dirty_since;
+        w.save_task = self.save_task;
+        w.status = self.status;
+        w.more_btn_bounds = self.more_bounds;
+        w.doc_menu = self.doc_menu;
+        w.doc_sub = self.doc_sub;
+        w.doc_info = self.doc_info;
+        w.history = self.history;
+        w.preview = self.preview;
+        w.version_rename = self.version_rename;
+    }
+}
+
 pub struct Workspace {
     pub quick_note: bool,
     pub shortcut_recording: Option<String>,
@@ -302,6 +367,12 @@ pub struct Workspace {
     pub entries: Vec<Entry>,
     pub current: Option<String>,
     pub editor: Option<Entity<Editor>>,
+    /// 分屏: the other pane when split view is on. The fields above always
+    /// belong to the active pane (`active_second`), and `split` holds the
+    /// other one; [`Self::activate`] swaps them.
+    pub split: Option<PaneState>,
+    /// The second pane is the active one (see [`Self::activate`]).
+    pub active_second: bool,
     pub search: Entity<TextField>,
     /// Keyboard highlight inside search results.
     pub search_sel: Option<usize>,
@@ -418,6 +489,143 @@ fn notify_system(title: &str, body: &str) {
 }
 
 impl Workspace {
+    /// Make the other pane the active one: the window's document fields and the
+    /// two panels swap. Anything the keyboard, header or menus act on follows
+    /// the active pane, so this is how 分屏 keeps two documents live at once.
+    pub(crate) fn activate(&mut self, second: bool) {
+        if self.split.is_none() || self.active_second == second { return }
+        let mine = PaneState::take_from(self);
+        let other = self.split.take().unwrap_or_default();
+        self.split = Some(mine);
+        other.install(self);
+        self.active_second = second;
+    }
+
+    /// Run `f` with the window's document fields belonging to `second`. Used
+    /// so the single-pane code paths (save, sync, menus) serve either pane.
+    pub(crate) fn with_pane<R>(&mut self, second: bool, f: impl FnOnce(&mut Self) -> R) -> R {
+        let was = self.active_second;
+        self.activate(second);
+        let out = f(self);
+        self.activate(was);
+        out
+    }
+
+    /// Make `second` the pane the header and keyboard act on, closing the
+    /// transient menus of both (a menu belongs to the pane it was opened in).
+    pub(crate) fn set_active_pane(&mut self, second: bool, cx: &mut Context<Self>) {
+        if self.split.is_none() || self.active_second == second { return }
+        self.activate(second);
+        self.doc_menu = false;
+        self.doc_sub = None;
+        if let Some(p) = self.split.as_mut() { p.doc_menu = false; p.doc_sub = None; }
+        // Keys belong to the focused editor: hand them to the new pane's.
+        let focus = self.editor.as_ref().map(|ed| ed.read(cx).focus.clone());
+        if let Some(focus) = focus {
+            let window = cx.active_window();
+            if let Some(window) = window {
+                let _ = window.update(cx, |_, window, cx| window.focus(&focus, cx));
+            }
+        }
+        cx.notify();
+    }
+
+    /// The document id shown in the given pane.
+    pub(crate) fn pane_doc(&self, second: bool) -> Option<&str> {
+        if self.active_second == second { self.current.as_deref() } else { self.split.as_ref().and_then(|p| p.current.as_deref()) }
+    }
+
+    /// The editor of the given pane.
+    pub(crate) fn pane_editor(&self, second: bool) -> Option<&Entity<Editor>> {
+        if self.active_second == second { self.editor.as_ref() } else { self.split.as_ref().and_then(|p| p.editor.as_ref()) }
+    }
+
+    /// This window's open documents, with the active one first.
+    pub(crate) fn open_docs(&self) -> Vec<(bool, String)> {
+        let mut out: Vec<(bool, String)> = vec![];
+        if let Some(id) = self.pane_doc(false) { out.push((false, id.to_string())) }
+        if let Some(id) = self.pane_doc(true) { out.push((true, id.to_string())) }
+        out
+    }
+
+    /// Save every open pane; false when one failed.
+    pub(crate) fn flush_all(&mut self, cx: &mut Context<Self>) -> bool {
+        let panes = if self.split.is_some() { 2 } else { 1 };
+        let mut ok = true;
+        for k in 0..panes {
+            ok &= self.with_pane(k == 1, |w| w.flush(cx));
+        }
+        ok
+    }
+
+    /// 分屏: open the second pane beside the first. `doc`: the document to put
+    /// there; None leaves it empty so the next note picked in the sidebar lands
+    /// in it. Called with 分屏 already open, `doc` replaces the other pane's
+    /// document, and None closes the split.
+    pub fn open_split(&mut self, doc: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
+        if self.split.is_some() {
+            match doc {
+                None => self.close_split(cx),
+                Some(id) => {
+                    let target = !self.active_second;
+                    self.set_active_pane(target, cx);
+                    // From the header (the empty pane is active) to that very pane.
+                    if self.current.as_deref() != Some(id) { self.open(id, window, cx) }
+                }
+            }
+            return;
+        }
+        // Nothing to split from: the document opens as it always does.
+        if self.current.is_none() {
+            if let Some(id) = doc { self.open(id, window, cx) }
+            return;
+        }
+        // The open document moves to the first pane; the second starts empty
+        // and says so until a note is picked in the sidebar. Keys and menus act
+        // on the empty pane from here on.
+        let first = PaneState::take_from(self);
+        self.split = Some(first);
+        // Each pane hangs its own menus: the first keeps the cell it had, the
+        // window records the second pane's button in a cell of its own.
+        self.more_btn_bounds = Rc::new(Cell::new(None));
+        self.active_second = true;
+        self.status = SaveStatus::Idle;
+        if let Some(id) = doc { self.open(id, window, cx) }
+        cx.notify();
+    }
+
+    /// 关闭分屏: the other pane closes and the remaining one keeps the window.
+    /// Both panes are written first; a failed save keeps the split and asks
+    /// through the 保存失败 dialog. An empty active pane gives way to the other.
+    pub fn close_split(&mut self, cx: &mut Context<Self>) {
+        if self.split.is_none() { return }
+        if !self.flush_all(cx) {
+            self.confirm = Some(Confirm::SaveFailed);
+            cx.notify();
+            return;
+        }
+        // The pane that keeps the window: the active one, unless it is empty
+        // and the other one has a document.
+        let active_empty = self.current.is_none();
+        let other_has_doc = self.split.as_ref().is_some_and(|p| p.current.is_some());
+        if active_empty && other_has_doc {
+            // Keep the other pane: swap it in, then drop the empty one.
+            self.activate(!self.active_second);
+        } else if self.active_second {
+            self.activate(false);
+        }
+        if let Some(closed) = self.split.take()
+            && let Some(id) = closed.current.as_deref()
+            && !self.open_docs().iter().any(|(_, open)| open == id)
+        {
+            self.store.forget_loaded(id);
+        }
+        self.active_second = false;
+        self.doc_menu = false;
+        self.doc_sub = None;
+        cx.notify();
+    }
+
     /// Other active windows take the lists a background write left; `trash`
     /// only when that write touched it.
     pub(crate) fn sync_peers(&self, cx: &mut Context<Self>, entries: &[Entry], trash: Option<&[crate::store::TrashEntry]>) {
@@ -514,13 +722,21 @@ impl Workspace {
                 cx.notify();
             }),
             // Last resort (the system logging out): ⌘Q and the close button
-            // go through `save_before` and ask when the save fails.
+            // go through `save_all_before` and ask when a save fails.
             cx.on_app_quit(|this, cx| {
                 crate::quick_note::persist(cx);
                 this.flush_view_state();
-                if !this.store.file_task_busy() && !this.flush(cx) && let Some(ed) = &this.editor
-                    && let Err(error) = this.store.recover_later(&ed.read(cx).core.doc) {
-                    crate::logging::write(&format!("Could not preserve unsaved document: {error:#}"));
+                if !this.store.file_task_busy() {
+                    let panes = if this.split.is_some() { 2 } else { 1 };
+                    for k in 0..panes {
+                        let doc = this.with_pane(k == 1, |w| {
+                            if w.flush(cx) { w.editor.as_ref().map(|ed| ed.read(cx).core.doc.clone()) } else { None }
+                        });
+                        if let Some(doc) = doc
+                            && let Err(error) = this.store.recover_later(&doc) {
+                            crate::logging::write(&format!("Could not preserve unsaved document: {error:#}"));
+                        }
+                    }
                 }
                 async {}
             }),
@@ -528,7 +744,7 @@ impl Workspace {
         let this = cx.weak_entity();
         window.on_window_should_close(cx, move |_, cx| {
             crate::quick_note::persist(cx);
-            this.update(cx, |w, cx| { w.cancel_shortcut_recording(cx); w.flush_view_state(); w.save_before(cx, |_, window, _| window.remove_window()) }).unwrap_or(true)
+            this.update(cx, |w, cx| { w.cancel_shortcut_recording(cx); w.flush_view_state(); w.save_all_before(cx, |_, window, _| window.remove_window()) }).unwrap_or(true)
         });
         if !quick { crate::settings::watch_themes(cx); }
         // A file written into the library from outside (a model writing a
@@ -609,6 +825,8 @@ impl Workspace {
             entries,
             current: None,
             editor: None,
+            split: None,
+            active_second: false,
             search,
             search_sel: None,
             sidebar_open: !quick,
@@ -748,6 +966,12 @@ impl Workspace {
     /// Show `id`; false when it could not be opened (or the open document
     /// could not be saved first, see [`Self::save_before`]).
     pub fn try_open(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        // 分屏: a document already open in the other pane comes to the front
+        // instead of opening a second copy of itself.
+        if self.split.is_some() && self.pane_doc(!self.active_second) == Some(id) {
+            self.set_active_pane(!self.active_second, cx);
+            return true;
+        }
         // A snapshot is on screen: back to the live document before anything
         // else touches the editor.
         if self.history.is_some() { self.close_history(cx); }
@@ -810,58 +1034,17 @@ impl Workspace {
         // 阅读位置: back to where this document was left, on its first frame.
         let top = self.store.scroll_top(id);
         editor.update(cx, |e, _| e.restore_top = top);
-        self.editor_sub = Some(cx.subscribe_in(&editor, window, |this, _, ev: &EditorEvent, window, cx| match ev {
-            EditorEvent::Changed => {
-                this.file_history.prefer_files = false;
-                // 阅读模式 put the document back: nothing to save.
-                let rejected = this.editor.clone().is_some_and(|ed| ed.update(cx, |e, cx| e.reject_read_only_edit(cx)));
-                if !rejected {
-                    this.sync_document(window, cx);
-                    this.schedule_save(window, cx);
-                }
-            }
-            EditorEvent::Mode(reading) => this.set_mode(*reading, window, cx),
-            EditorEvent::Info(info) => this.set_info_row(*info),
-            EditorEvent::Toast => {
-                this.toast = None;
-                cx.notify();
-            }
-            EditorEvent::Save => {
-                if !this.flush(cx) { this.confirm = Some(Confirm::SaveFailed); cx.notify(); }
-            }
-            EditorEvent::Search(q) => {
-                this.open_search(window, cx);
-                this.search.update(cx, |s, cx| s.set_text(q, cx));
-                this.search_sel = this.default_search_sel(cx);
-            }
-            EditorEvent::OpenRelative(url) => this.open_relative(url, window, cx),
-            EditorEvent::OpenDoc(id) => this.open(id, window, cx),
-            EditorEvent::OpenDocAt(id, ordinal) => this.open_at(id, *ordinal, window, cx),
-            EditorEvent::HideRefs => this.ask_refs(false, cx),
-            EditorEvent::HistoryEscape => {
-                // Arrives from inside the editor's own update: leave the
-                // preview (then the drawer) once that finishes.
-                let this = cx.entity();
-                cx.defer(move |cx| {
-                    this.update(cx, |w, cx| {
-                        if w.preview.is_some() { w.exit_preview(cx) } else { w.close_history(cx) }
-                    });
-                });
-            }
-            EditorEvent::Duplicate => {
-                if let Some(id) = this.current.clone() {
-                    this.duplicate_doc(&id, window, cx);
-                }
-            }
-            EditorEvent::Leave => cx.defer_in(window, |this, window, cx| this.leave_board(window, cx)),
-            EditorEvent::Catalogue(pinned) => {
-                if let Some(id) = this.current.clone() {
-                    if let Some(e) = this.entries.iter_mut().find(|e| e.id == id) {
-                        e.meta.catalogue_closed = !pinned;
-                    }
-                    let _ = this.store.set_catalogue(&id, *pinned);
-                }
-            }
+        // Events name the pane they came from: the window's own fields serve the
+        // active pane, and an editor can belong to either.
+        let pane_of = |w: &Workspace, editor: &Entity<Editor>| {
+            let id = editor.entity_id();
+            if w.editor.as_ref().is_some_and(|e| e.entity_id() == id) { w.active_second }
+            else if w.split.as_ref().and_then(|p| p.editor.as_ref()).is_some_and(|e| e.entity_id() == id) { !w.active_second }
+            else { w.active_second }
+        };
+        self.editor_sub = Some(cx.subscribe_in(&editor, window, move |this, editor, ev: &EditorEvent, window, cx| {
+            let pane = pane_of(this, editor);
+            this.with_pane(pane, |w| w.on_editor_event(ev, window, cx));
         }));
         // Opening a document puts the caret in it, unless the user is typing a search.
         if !self.search_open {
@@ -890,6 +1073,64 @@ impl Workspace {
         self.mode_menu = false;
         cx.notify();
         true
+    }
+
+    /// One [`EditorEvent`] from the active pane's editor (`with_pane` has made
+    /// the pane it came from the active one).
+    fn on_editor_event(&mut self, ev: &EditorEvent, window: &mut Window, cx: &mut Context<Self>) {
+        match ev {
+            EditorEvent::Changed => {
+                self.file_history.prefer_files = false;
+                // 阅读模式 put the document back: nothing to save.
+                let rejected = self.editor.clone().is_some_and(|ed| ed.update(cx, |e, cx| e.reject_read_only_edit(cx)));
+                if !rejected {
+                    self.sync_document(window, cx);
+                    self.schedule_save(window, cx);
+                }
+            }
+            EditorEvent::Mode(reading) => self.set_mode(*reading, window, cx),
+            EditorEvent::Info(info) => self.set_info_row(*info),
+            EditorEvent::Toast => {
+                self.toast = None;
+                cx.notify();
+            }
+            EditorEvent::Save => {
+                if !self.flush(cx) { self.confirm = Some(Confirm::SaveFailed); cx.notify(); }
+            }
+            EditorEvent::Search(q) => {
+                self.open_search(window, cx);
+                self.search.update(cx, |s, cx| s.set_text(q, cx));
+                self.search_sel = self.default_search_sel(cx);
+            }
+            EditorEvent::OpenRelative(url) => self.open_relative(url, window, cx),
+            EditorEvent::OpenDoc(id) => self.open(id, window, cx),
+            EditorEvent::OpenDocAt(id, ordinal) => self.open_at(id, *ordinal, window, cx),
+            EditorEvent::HideRefs => self.ask_refs(false, cx),
+            EditorEvent::HistoryEscape => {
+                // Arrives from inside the editor's own update: leave the
+                // preview (then the drawer) once that finishes.
+                let this = cx.entity();
+                cx.defer(move |cx| {
+                    this.update(cx, |w, cx| {
+                        if w.preview.is_some() { w.exit_preview(cx) } else { w.close_history(cx) }
+                    });
+                });
+            }
+            EditorEvent::Duplicate => {
+                if let Some(id) = self.current.clone() {
+                    self.duplicate_doc(&id, window, cx);
+                }
+            }
+            EditorEvent::Leave => cx.defer_in(window, |this, window, cx| this.leave_board(window, cx)),
+            EditorEvent::Catalogue(pinned) => {
+                if let Some(id) = self.current.clone() {
+                    if let Some(e) = self.entries.iter_mut().find(|e| e.id == id) {
+                        e.meta.catalogue_closed = !pinned;
+                    }
+                    let _ = self.store.set_catalogue(&id, *pinned);
+                }
+            }
+        }
     }
 
     /// ⌘N / the 文件 menu: create the 快捷新建 type (a fixed one, or the last
@@ -931,13 +1172,13 @@ impl Workspace {
         let all: Vec<String> = groups.iter().map(|(d, _)| d.clone()).collect();
         for handle in cx.windows().into_iter().filter(|w| w.window_id() != window.window_handle().window_id()) {
             if let Some(handle) = handle.downcast::<Workspace>()
-                && handle.update(cx, |ws, _, _| ws.current.as_ref().is_some_and(|id| all.contains(id))).unwrap_or(false)
+                && handle.update(cx, |ws, _, _| ws.open_docs().iter().any(|(_, id)| all.contains(id))).unwrap_or(false)
             {
                 self.show_toast_kind(ToastKind::Error, crate::settings::text("请先关闭正在编辑这些文档的其他窗口，再删除"), cx);
                 return;
             }
         }
-        if self.current.as_ref().is_some_and(|c| all.contains(c)) {
+        if self.open_docs().iter().any(|(_, id)| all.contains(id)) {
             let retry = ids.to_vec();
             if !self.save_before(cx, move |w, window, cx| w.delete_docs(&retry, window, cx)) {
                 return;
@@ -971,6 +1212,10 @@ impl Workspace {
                     w.current = None;
                     w.editor = None;
                     w.editor_sub = None;
+                }
+                // 分屏: the other pane cannot keep a document that went to the 回收站.
+                if w.split.as_ref().is_some_and(|p| p.current.as_ref().is_some_and(|c| done.deleted.contains(c))) {
+                    w.close_split(cx);
                 }
                 w.sync_peers(cx, &listed.entries, Some(&listed.trash));
                 w.entries = listed.entries; w.trash = listed.trash;
@@ -1148,11 +1393,15 @@ impl Workspace {
     }
 
     pub(crate) fn document_peers(&self, id: &str, window: &Window, cx: &mut Context<Self>) -> Vec<Entity<Editor>> {
-        cx.windows().into_iter().filter(|w| w.window_id() != window.window_handle().window_id())
+        // The other pane of this window counts as a sibling view.
+        let me = self.split.as_ref().and_then(|p| p.editor.clone().filter(|_| p.current.as_deref() == Some(id))).into_iter();
+        let window_id = window.window_handle().window_id();
+        me.chain(cx.windows().into_iter().filter(|w| w.window_id() != window_id)
             .filter_map(|w| w.downcast::<Workspace>())
+            // A window can show the document in either pane.
             .filter_map(|w| w.update(cx, |ws, _, _| {
-                (ws.current.as_deref() == Some(id)).then(|| ws.editor.clone()).flatten()
-            }).ok().flatten()).collect()
+                ws.open_docs().iter().filter(|(_, open)| open == id).find_map(|(second, _)| ws.pane_editor(*second).cloned())
+            }).ok().flatten())).collect()
     }
 
     /// 阅读位置: hand the open document's scroll offset to the library, so
@@ -1183,9 +1432,13 @@ impl Workspace {
         // sibling window.
         if self.preview.is_some() { return }
         let (Some(id), Some(editor)) = (self.current.clone(), self.editor.clone()) else { return };
-        let peers = self.document_peers(&id, window, cx);
-        if peers.is_empty() { return; }
         let core = editor.read(cx).core.clone();
+        // The other pane of this window, when it shows the same document.
+        if let Some(sibling) = self.split.as_ref().and_then(|p| p.editor.clone().filter(|_| p.current.as_deref() == Some(&id))) {
+            sibling.update(cx, |e, cx| e.receive_document(&core, cx));
+        }
+        let peers = self.document_peers(&id, window, cx);
+        if peers.is_empty() { return }
         for peer in peers { peer.update(cx, |e, cx| e.receive_document(&core, cx)); }
         for handle in cx.windows().into_iter().filter(|w| w.window_id() != window.window_handle().window_id()).filter_map(|w| w.downcast::<Workspace>()) {
             let _ = handle.update(cx, |ws, _, cx| {
@@ -1194,7 +1447,10 @@ impl Workspace {
                     entry.icon = core.doc.icon.clone();
                 }
                 // Every remaining view can save the latest state if its sibling closes.
-                if ws.current.as_deref() == Some(&id) { ws.unsaved = true; }
+                if ws.open_docs().iter().any(|(_, open)| *open == id) {
+                    if ws.current.as_deref() == Some(&id) { ws.unsaved = true; }
+                    if let Some(p) = ws.split.as_mut().filter(|p| p.current.as_deref() == Some(&id)) { p.unsaved = true; }
+                }
                 cx.notify();
             });
         }
@@ -1219,12 +1475,14 @@ impl Workspace {
                 e.title = title;
             }
         }
+        // The timer outlives a switch between panes: flush the one that changed.
+        let pane = self.active_second;
         self.save_task = Some(cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(delay).await;
             while this.update(cx, |w, _| w.store.file_task_busy()).unwrap_or(false) {
                 cx.background_executor().timer(Duration::from_millis(50)).await;
             }
-            let _ = this.update(cx, |w, cx| w.flush(cx));
+            let _ = this.update(cx, |w, cx| w.with_pane(pane, |w| w.flush(cx)));
         }));
         cx.notify();
     }
@@ -1394,39 +1652,60 @@ impl Workspace {
         false
     }
 
+    /// [`Self::save_before`] for what closes the window itself: every open
+    /// pane is written, not just the active one.
+    pub fn save_all_before(&mut self, cx: &mut Context<Self>, then: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) + 'static) -> bool {
+        if self.store.file_task_busy() { return false; }
+        if self.flush_all(cx) {
+            return true;
+        }
+        self.after_save = Some(Box::new(then));
+        self.confirm = Some(Confirm::SaveFailed);
+        cx.notify();
+        false
+    }
+
     /// The 保存失败 dialog's choices: `retry` saves again, otherwise the
     /// changes are given up. Either way the held-back action runs once the
     /// document no longer needs saving.
     pub(crate) fn resolve_save_failed(&mut self, retry: bool, window: &mut Window, cx: &mut Context<Self>) {
         if retry {
-            if !self.flush(cx) {
+            if !self.flush_all(cx) {
                 self.confirm = Some(Confirm::SaveFailed);
                 return;
             }
         } else {
-            let Some(id) = self.current.clone() else { return };
-            match self.store.load_for_edit(&id, false) {
-                Ok(doc) => {
-                    if self.store.is_markdown(&id) { self.adopt_markdown(&id, doc, cx); }
-                    else {
-                        if let Some(ed) = &self.editor {
-                            ed.update(cx, |e, cx| e.receive_document(&crate::editor::core::Core::new(doc), cx));
+            // 放弃修改 gives up every pane's changes, not just the active one's.
+            let panes = if self.split.is_some() { 2 } else { 1 };
+            for k in 0..panes {
+                let failed = self.with_pane(k == 1, |w| {
+                    let id = w.current.clone()?;
+                    match w.store.load_for_edit(&id, false) {
+                        Ok(doc) => {
+                            if w.store.is_markdown(&id) { w.adopt_markdown(&id, doc, cx); }
+                            else {
+                                if let Some(ed) = &w.editor {
+                                    ed.update(cx, |e, cx| e.receive_document(&crate::editor::core::Core::new(doc), cx));
+                                }
+                                w.sync_document(window, cx);
+                            }
+                            w.save_task = None;
+                            w.unsaved = false;
+                            w.status = SaveStatus::Idle;
+                            w.dirty_since = None;
+                            None
                         }
-                        self.sync_document(window, cx);
+                        Err(e) => Some(e.to_string()),
                     }
-                    self.save_task = None;
-                    self.unsaved = false;
-                    self.status = SaveStatus::Idle;
-                    self.dirty_since = None;
-                    self.entries = self.store.list();
-                    self.sort();
-                }
-                Err(e) => {
-                    self.status = SaveStatus::Failed(e.to_string());
+                });
+                if let Some(e) = failed {
+                    self.status = SaveStatus::Failed(e);
                     self.confirm = Some(Confirm::SaveFailed);
                     return;
                 }
             }
+            self.entries = self.store.list();
+            self.sort();
         }
         if let Some(then) = self.after_save.take() {
             then(self, window, cx);
@@ -1552,7 +1831,9 @@ impl Workspace {
     }
 
     /// `pane_w`: the width the header spans, to fold the breadcrumbs when narrow.
-    fn top_bar(&self, pane_w: f32, cx: &mut Context<Self>) -> impl IntoElement {
+    /// `second`: this header belongs to the second pane of 分屏 (its ids differ
+    /// from the first pane's, which is drawn in the same window).
+    fn top_bar(&self, pane_w: f32, second: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let mut title = self
             .editor
             .as_ref()
@@ -1568,7 +1849,7 @@ impl Workspace {
             _ => None,
         };
         // Independent icon controls, with equal top and right insets.
-        let seg = crate::ui::header_icon;
+        let seg = |id: String, name: &'static str| crate::ui::header_icon(id, name);
         let divider = || div().flex_none().w(px(1.)).h(px(18.)).bg(Theme::line_divider());
         // Breadcrumbs: the parent pages, each linking to itself, with the
         // middle ones folded into "…" when the chain is long.
@@ -1674,8 +1955,10 @@ impl Workspace {
         }
         let record_more = self.more_btn_bounds.clone();
         let doc_open = self.doc_menu;
+        // In 分屏 both headers are drawn at once: their element ids differ.
+        let id = |name: &str| if second { format!("{name}-2") } else { name.to_string() };
         div()
-            .id("top-bar").relative()
+            .id(id("top-bar")).relative()
             .h(px(HEADER_H))
             .flex_none()
             .flex()
@@ -1684,7 +1967,11 @@ impl Workspace {
             // Clear of the traffic lights, which sit over the note when the sidebar is closed.
             .pl(if self.sidebar_open { px(18.) } else { px(theme::TRAFFIC_LIGHTS_W) })
             .title_bar()
-            .when(!self.sidebar_open, |d| {
+            // 分屏: the pane under the pointer is the one keys and menus act on.
+            // Capture phase, so the buttons inside still see their own pane's
+            // state after the swap (they stop propagation on the way out).
+            .capture_any_mouse_down(cx.listener(move |w, _, _, cx| w.set_active_pane(second, cx)))
+            .when(!self.sidebar_open && !second, |d| {
                 d.child(
                     div()
                         .id("open-sidebar")
@@ -1764,7 +2051,7 @@ impl Workspace {
                         d.child(
                             // No tooltip while its dropdown is open; the menu hangs
                             // from this button's right edge.
-                            seg("doc-more", "ellipsis")
+                            seg(id("doc-more"), "ellipsis")
                                 .relative()
                                 .when(self.doc_menu, |d| d.bg(Theme::fill_hover()))
                                 .when(!self.doc_menu, |d| d.tip(crate::settings::tr("更多", "More"), None))
@@ -1779,16 +2066,120 @@ impl Workspace {
                                 })),
                         )
                     })
+                    // 分屏: the second document beside this one, or its close button.
                     .child(
-                        seg("doc-search", "search")
+                        crate::ui::header_icon(id("doc-split"), "view-grid")
+                            .when(self.split.is_some(), |d| d.bg(Theme::fill_hover()))
+                            .tip(if self.split.is_some() { crate::settings::tr("关闭分屏", "Close split view") } else { crate::settings::tr("分屏", "Split view") }, None)
+                            .on_click(cx.listener(move |w, _, window, cx| w.open_split(None, window, cx))),
+                    )
+                    .child(
+                        seg(id("doc-search"), "search")
                             .tip_label(crate::shortcuts::keys(crate::settings::text("搜索(⌘ + J)")).into(), TipSide::Below)
                             .on_click(cx.listener(|_, _, window, cx| window.dispatch_action(Box::new(FocusSearch), cx))),
                     )
                     .child(
                         // Straight to a new document: no 新建 menu, as 导入 is rare.
-                        seg("doc-new", "plus").tip(crate::settings::tr("新建文档", "New document"), None).on_click(cx.listener(|w, _, window, cx| w.new_doc(window, cx))),
+                        seg(id("doc-new"), "plus").tip(crate::settings::tr("新建文档", "New document"), None).on_click(cx.listener(|w, _, window, cx| w.new_doc(window, cx))),
                     ).into_any_element()
             )
+    }
+
+    /// 分屏: the two documents side by side, each with its own top bar, editor
+    /// and 快捷键 drawer. Each pane is laid out from the window's own fields,
+    /// so [`Self::with_pane`] swaps the other one in while it renders.
+    fn render_panes(&mut self, pane_w: f32, cx: &mut Context<Self>) -> AnyElement {
+        let mut panes = vec![];
+        for second in [false, true] {
+            let drawer = second == self.active_second;
+            let pane = if self.pane_doc(second).is_some() {
+                self.with_pane(second, |w| w.render_pane(pane_w / 2., second, drawer, cx))
+            } else {
+                self.render_empty_pane(second, cx)
+            };
+            panes.push(pane);
+        }
+        div().flex_1()
+            .min_w_0()
+            .h_full()
+            .flex()
+            .children(panes.into_iter().enumerate().map(|(i, pane)| {
+                div().relative().flex_1().min_w_0().h_full().flex().flex_col()
+                    .when(i == 0, |d| d.border_r_1().border_color(Theme::line_divider()))
+                    .child(pane)
+            }))
+            .into_any_element()
+    }
+
+    /// A pane of 分屏 with no document yet: pick one in the sidebar.
+    fn render_empty_pane(&mut self, second: bool, cx: &mut Context<Self>) -> AnyElement {
+        let active = self.active_second == second;
+        div()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .flex()
+            .flex_col()
+            .capture_any_mouse_down(cx.listener(move |w, _, _, cx| w.set_active_pane(second, cx)))
+            // The header keeps only what the empty pane needs: the split's close button.
+            .child(
+                div()
+                    .id(if second { "top-bar-2" } else { "top-bar" })
+                    .relative()
+                    .h(px(HEADER_H))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .pr(px(crate::ui::header_right_inset()))
+                    .pl(px(theme::TRAFFIC_LIGHTS_W))
+                    .title_bar()
+                    .child(div().flex_1())
+                    .child(
+                        crate::ui::header_icon(if second { "doc-split-2" } else { "doc-split" }, "view-grid")
+                            .bg(Theme::fill_hover())
+                            .tip(crate::settings::tr("关闭分屏", "Close split view"), None)
+                            .on_click(cx.listener(move |w, _, _, cx| w.close_split(cx))),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(6.))
+                    .when(active, |d| d.bg(Theme::fill_hover()))
+                    .child(icon("doc", 28., Theme::text_placeholder()))
+                    .child(div().text_size(px(13.)).line_height(px(20.)).text_color(Theme::text_caption()).child(crate::settings::tr("从侧栏选择一个文档，在这里打开", "Pick a document in the sidebar to open it here"))),
+            )
+            .into_any_element()
+    }
+
+    /// One pane of 分屏: the header, its editor and (when it is the active
+    /// pane) the 快捷键 drawer. The window's fields already belong to this pane
+    /// (`with_pane`).
+    fn render_pane(&mut self, pane_w: f32, second: bool, drawer: bool, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .flex()
+            .flex_col()
+            .child(self.top_bar(pane_w, second, cx))
+            .children(self.render_history_banner(cx))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    // A click anywhere in the pane makes it the one keys and menus act on.
+                    .capture_any_mouse_down(cx.listener(move |w, _, _, cx| w.set_active_pane(second, cx)))
+                    .child(div().relative().flex_1().min_w_0().h_full().children(self.editor.clone()))
+                    .when(drawer, |d| d.children(self.render_shortcuts(cx))),
+            )
+            .into_any_element()
     }
 }
 
@@ -1855,14 +2246,23 @@ impl Render for Workspace {
         let toast = self.render_toast(window);
         let forced_update = crate::update::prompt(window, cx);
         let mode_menu = self.render_mode_menu(cx);
+        // 分屏: the other pane's "…" menu hangs from its own header button.
+        let other_menu: Vec<AnyElement> = match self.split.as_ref().filter(|p| p.doc_menu && p.current.is_some()) {
+            Some(_) => self.with_pane(!self.active_second, |w| w.render_doc_menu(window, cx)),
+            None => vec![],
+        };
         let main = match self.view {
+            View::Doc if self.split.is_some() => {
+                let pane_w = f32::from(window.viewport_size().width) - if self.sidebar_open { self.sidebar_w(window) } else { 0. };
+                self.render_panes(pane_w, cx)
+            }
             View::Doc => div()
                 .flex_1()
                 .min_w_0()
                 .h_full()
                 .flex()
                 .flex_col()
-                .child(self.top_bar(f32::from(window.viewport_size().width) - if self.sidebar_open { self.sidebar_w(window) } else { 0. }, cx))
+                .child(self.top_bar(f32::from(window.viewport_size().width) - if self.sidebar_open { self.sidebar_w(window) } else { 0. }, false, cx))
                 .children(self.render_history_banner(cx))
                 .child(
                     div()
@@ -1945,6 +2345,10 @@ impl Render for Workspace {
             .on_action(cx.listener(|w, _: &ToggleSidebar, _, cx| {
                 w.sidebar_open = !w.sidebar_open;
                 cx.notify();
+            }))
+            .on_action(cx.listener(|w, _: &SplitView, window, cx| {
+                if w.view != View::Doc { return }
+                w.open_split(None, window, cx);
             }))
             .on_action(cx.listener(|w, _: &FindInDoc, window, cx| w.find_in_doc(false, window, cx)))
             .on_action(cx.listener(|w, _: &ReplaceInDoc, window, cx| {
@@ -2041,6 +2445,7 @@ impl Render for Workspace {
             .children(crate::ui::window_controls(window))
             .children(row_menu)
             .children(doc_menu)
+            .children(other_menu)
             .children(mode_menu)
             .children(doc_info)
             .children(trash_menu)
@@ -2149,4 +2554,60 @@ pub(crate) fn check_save_safety(phase: &str, cx: &mut App) {
         eprintln!("save-safety: PASS; remaining conflict blocked quit; copy preserved; edit after reload saved cleanly");
         for (handle, _) in windows { handle.update(cx, |_, window, _| window.remove_window()).unwrap(); }
     }
+}
+
+/// 分屏 check against a real window and library, for `check-split <library>`:
+/// the second pane opens beside the first, each keeps its own document, edits,
+/// menus and undo stack, closing it leaves the first pane as it was.
+#[cfg(feature = "devtools")]
+pub(crate) fn check_split(cx: &mut App) {
+    let handle = cx.windows().into_iter().find_map(|w| w.downcast::<Workspace>()).expect("a workspace window");
+    let first = handle.update(cx, |ws, _, _| ws.current.clone()).unwrap().expect("a document open");
+    let other = handle.update(cx, |ws, _, _| ws.entries.iter().find(|e| e.id != first).map(|e| e.id.clone())).unwrap().expect("a second document");
+    handle.update(cx, |ws, window, cx| {
+        ws.open_split(Some(&other), window, cx);
+        assert!(ws.split.is_some(), "分屏 did not open");
+        assert_eq!(ws.pane_doc(false), Some(first.as_str()), "the first pane lost its document");
+        assert_eq!(ws.pane_doc(true), Some(other.as_str()), "the second pane did not take the document");
+        assert!(ws.active_second, "the new pane is not the active one");
+        // Each pane keeps its own editor entity and undo stack.
+        let left = ws.pane_editor(false).cloned().expect("first editor");
+        let right = ws.pane_editor(true).cloned().expect("second editor");
+        assert!(left.entity_id() != right.entity_id(), "both panes share one editor");
+        // 分屏 must not hand one document's state to the other.
+        let frames = [left.read(cx).core.doc.title.text.clone(), right.read(cx).core.doc.title.text.clone()];
+        assert!(ws.store.load(&first).unwrap().title.text == frames[0], "the first pane shows another document");
+        assert!(ws.store.load(&other).unwrap().title.text == frames[1], "the second pane shows another document");
+        // Switching panes swaps the window's own fields, and nothing else.
+        ws.set_active_pane(false, cx);
+        assert!(!ws.active_second);
+        assert_eq!(ws.current.as_deref(), Some(first.as_str()));
+        ws.set_active_pane(true, cx);
+        assert_eq!(ws.current.as_deref(), Some(other.as_str()));
+        // Editing in one pane must never reach the other's document. (GPUI
+        // delivers `EditorEvent::Changed` after the current update ends, so the
+        // annotation is checked here rather than through the autosave it starts.)
+        let active = ws.editor.clone().expect("the active editor");
+        active.update(cx, |e, cx| {
+            let block = e.core.doc.blocks.iter().find(|b| b.kind.has_text()).map(|b| b.id).expect("a text block");
+            e.core.sel = crate::editor::core::Selection::caret(crate::editor::core::Pos::new(block, 0));
+            e.core.insert_text("typed-in-this-pane");
+            e.changed(window, cx);
+        });
+        // The pane's own state marks it dirty; `flush` writes it.
+        ws.unsaved = true;
+        assert!(active.read(cx).core.doc.plain_text().contains("typed-in-this-pane"), "the edit did not land in the active pane's document");
+        // Each pane saves its own document.
+        assert!(ws.flush_all(cx), "分屏 did not save");
+        let bodies = [left.read(cx).core.doc.plain_text(), right.read(cx).core.doc.plain_text()];
+        assert_eq!(bodies[1].matches("typed-in-this-pane").count(), 1, "the edit is not in the second pane: {bodies:?}");
+        assert_eq!(bodies[0].matches("typed-in-this-pane").count(), 0, "the edit leaked into the first pane: {bodies:?}");
+        assert!(ws.store.load(&other).unwrap().plain_text().contains("typed-in-this-pane"), "the second pane's edit was not written");
+        assert!(!ws.store.load(&first).unwrap().plain_text().contains("typed-in-this-pane"), "the first pane's file took the second's edit");
+        // Closing it keeps the pane that is left.
+        ws.close_split(cx);
+        assert!(ws.split.is_none(), "分屏 did not close");
+        assert_eq!(ws.open_docs().len(), 1);
+        eprintln!("split-view: PASS; panes: {} + {}", frames[0], frames[1]);
+    }).unwrap();
 }

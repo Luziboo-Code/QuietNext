@@ -307,6 +307,10 @@ pub fn start(window: &mut Window, cx: &mut App) {
                 cx.update(|cx| crate::app::check_save_safety(rest.trim(), cx));
                 continue;
             }
+            if cmd == "check-split" {
+                cx.update(crate::app::check_split);
+                continue;
+            }
             #[cfg(target_os = "macos")]
             let handled = mouse_step(ns_view, cmd, &nums(rest));
             #[cfg(not(target_os = "macos"))]

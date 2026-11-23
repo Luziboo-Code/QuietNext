@@ -192,8 +192,11 @@ impl Workspace {
             canvas(move |b, _, _| record.set(Some(f32::from(b.size.width))), |_, _, _, _| {}).absolute().inset_0()
         };
         let (pin_id, star_id, mv_id, del_id, dup_id, print_id) = (id.clone(), id.clone(), id.clone(), id.clone(), id.clone(), id.clone());
+        let split_id = id.clone();
+        // 分屏: each pane's menu carries its own element ids.
+        let sfx = if self.active_second { "-2" } else { "" };
         let menu = popover()
-            .id("doc-menu")
+            .id(SharedString::from(format!("doc-menu{sfx}")))
             .occlude()
             .min_w(px(MENU_W))
             .py(px(PAD))
@@ -221,6 +224,15 @@ impl Workspace {
                     .on_hover(hover_sub(None))
                     .on_click(cx.listener(|w, _, window, cx| w.find_in_doc(false, window, cx))),
             )
+            // 分屏打开: the document beside the open one, both in this window.
+            .when(!board, |d| d.child(
+                menu_item("dm-split", "view-grid", crate::settings::tr("分屏打开", "Open in split view"), false, false)
+                    .on_hover(hover_sub(None))
+                    .on_click(cx.listener(move |w, _, window, cx| {
+                        w.close_doc_menu(cx);
+                        w.open_split(Some(&split_id), window, cx);
+                    })),
+            ))
             .child(divider()))
             .child(
                 menu_item("dm-move", "folder-input", crate::settings::text("移动到"), false, false)
@@ -321,12 +333,12 @@ impl Workspace {
             Some(DocSub::Width) => Some((item_top(shift_items, shift_items) - 1. - PAD, self.width_panel(width, cx).child(recorder()).into_any_element())),
             // Level the submenu's first item with 下载为.
             Some(DocSub::Download) => Some((
-                item_top(6 + shift_items - hidden.0, 3 + shift_items - hidden.1) - 1. - PAD,
+                item_top(7 + shift_items - hidden.0, 3 + shift_items - hidden.1) - 1. - PAD,
                 {
                     let pdf = id.clone();
                     let md = id.clone();
                     popover()
-                        .id("dm-download-menu")
+                        .id(SharedString::from(format!("dm-download-menu{sfx}")))
                         .occlude()
                         .min_w(px(130.))
                         .px(px(5.))
@@ -342,9 +354,9 @@ impl Workspace {
                 },
             )),
             Some(DocSub::More) => Some((
-                if crate::printing::SUPPORTED { item_top(10 + shift_items - hidden.0, 6 + shift_items - hidden.1) } else { item_top(9 + shift_items - hidden.0, 5 + shift_items - hidden.1) } - 1. - PAD,
+                if crate::printing::SUPPORTED { item_top(11 + shift_items - hidden.0, 6 + shift_items - hidden.1) } else { item_top(10 + shift_items - hidden.0, 5 + shift_items - hidden.1) } - 1. - PAD,
                 popover()
-                    .id("dm-more-menu")
+                    .id(SharedString::from(format!("dm-more-menu{sfx}")))
                     .occlude()
                     .min_w(px(210.))
                     .px(px(5.))
@@ -434,7 +446,7 @@ impl Workspace {
                 .on_click(cx.listener(move |ws, _, _, cx| ws.set_page_width(w, cx)))
         };
         popover()
-            .id("dm-width-panel")
+            .id(if self.active_second { "dm-width-panel-2" } else { "dm-width-panel" })
             .occlude()
             .relative()
             .w(px(238.))

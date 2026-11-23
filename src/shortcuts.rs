@@ -214,6 +214,7 @@ fn info(name: &str) -> Option<(usize, &'static str, &'static str)> {
         "OpenSettings" => (0, "打开设置", "Open Settings"),
         "GoHome" => (0, "返回主页", "Go to Home"),
         "ToggleSidebar" => (0, "展开 / 收起侧栏", "Show / hide sidebar"),
+        "SplitView" => (0, "分屏", "Split view"),
         "FocusSearch" => (0, "搜索文档", "Search documents"),
         "ToggleShortcuts" => (0, "查看快捷键", "Show shortcuts"),
         "OpenFile" => (1, "打开 Markdown 文件", "Open Markdown file"),
