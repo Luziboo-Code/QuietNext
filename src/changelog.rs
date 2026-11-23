@@ -17,6 +17,11 @@ const REAL_FOLDERS: &str = "文档库改为真实文件夹，以标题命名，�
 /// Each version's notes: (version, [(中文, English)]). Only the running
 /// version's are shown; a version without notes shows nothing.
 const NOTES: &[(&str, &[(&str, &str)])] = &[
+    ("0.1.15", &[
+        ("应用图标更新为全新的 Q 图标", "A new Q app icon"),
+        ("锁定编辑支持快捷键（设置 › 快捷键；macOS ⌘⇧K，Windows Ctrl+Shift+K）", "Lock editing has a shortcut (Settings › Shortcuts; ⌘⇧K on macOS, Ctrl+Shift+K on Windows)"),
+        ("下载为图片改为整页 PNG，保留左右的页面边距", "Export as image now captures the whole page as PNG, with its side margins"),
+    ]),
     ("0.1.14", &[
         ("查找替换支持正则表达式", "Find and replace supports regular expressions"),
         ("Obsidian 的 [[双链]] 可以点击打开对应的笔记", "Obsidian [[wikilinks]] open the note they point to"),
