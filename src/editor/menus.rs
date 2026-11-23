@@ -25,6 +25,8 @@ pub enum SlashKind {
     Reminder,
     Board,
     DataTable,
+    /// 模板: pick one from 设置 › 模板 and insert its body.
+    Template,
 }
 
 pub struct SlashItem {
@@ -175,6 +177,7 @@ pub const SLASH_ITEMS: &[SlashItem] = &[
     SlashItem { kind: SlashKind::DataTable, label: "数据表", icon: "table", color: TEAL, group: 1, keywords: &["数据表", "多维表格", "shujubiao", "sjb", "duoweibiaoge", "database", "bitable", "datatable", "base"] },
     SlashItem { kind: SlashKind::Board, label: "画板", icon: "palette", color: GREEN, group: 1, keywords: &["画板", "huaban", "hb", "board", "whiteboard", "excalidraw", "draw"] },
     SlashItem { kind: SlashKind::Button, label: "按钮", icon: "button", color: BLUE, group: 1, keywords: &["按钮", "anniu", "an", "button"] },
+    SlashItem { kind: SlashKind::Template, label: "模板", icon: "copy", color: TEAL, group: 1, keywords: &["模板", "moban", "mb", "template", "templater", "snippet"] },
     SlashItem {
         kind: SlashKind::Reminder,
         label: "日期提醒",
@@ -215,6 +218,7 @@ pub fn basic_tip(kind: SlashKind) -> (Option<&'static str>, Option<&'static str>
         SlashKind::Quote => turn("引用"),
         SlashKind::Divider => Some((Some(crate::shortcuts::hint("editor::InsertDivider", "⌘ + ⌥ + S")), Some("---"))),
         SlashKind::Link => Some((Some(crate::shortcuts::hint("editor::Link", "⌘ + K")), None)),
+        SlashKind::Template => Some((Some(crate::shortcuts::hint("editor::InsertTemplate", "⌥ + ⌘ + P")), None)),
         _ => None,
     }
     .unwrap_or((None, None))
@@ -380,7 +384,7 @@ mod tests {
         let r = filter_slash("cy");
         assert!(r.iter().all(|i| SLASH_ITEMS[*i].group == 1));
         // 子页面列表 left the menu with folders (pages no longer hold pages).
-        assert_eq!(r.len(), 10);
+        assert_eq!(r.len(), 11);
         assert!(filter_slash("zzz").is_empty());
         assert_eq!(SLASH_ITEMS[filter_slash("djs")[0]].label, "倒计时");
         let r = filter_slash("list");

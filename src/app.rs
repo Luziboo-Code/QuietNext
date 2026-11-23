@@ -362,6 +362,11 @@ pub struct Workspace {
     pub ai_base_field: Entity<TextField>,
     pub ai_model_field: Entity<TextField>,
     pub ai_key_field: Entity<TextField>,
+    /// 设置 › 模板: the template being edited (index into `prefs().templates`),
+    /// its name and its body.
+    pub template_index: Option<usize>,
+    pub template_name_field: Entity<TextField>,
+    pub template_body_field: Entity<TextField>,
     native_sidebar: crate::native_header::NativeSidebar,
     pub store: SharedStore,
     pub entries: Vec<Entry>,
@@ -690,6 +695,22 @@ impl Workspace {
             f.set_text(&crate::review::ai_key(), cx);
             f
         });
+        let template_name_field = cx.new(|cx| {
+            let mut f = TextField::new(crate::settings::tr("模板名称", "Template name"), cx);
+            f.size = 13.;
+            f.line_height = 20.;
+            f
+        });
+        let template_body_field = cx.new(|cx| {
+            let mut f = TextField::new(crate::settings::tr("模板内容（Markdown）", "Template body (Markdown)"), cx);
+            f.multiline = true;
+            f.wrap = true;
+            f.mono = false;
+            f.size = 13.;
+            f.line_height = 21.;
+            f.max_len = Some(20_000);
+            f
+        });
         let subs = vec![
             cx.subscribe(&settings_filter, |_, _, ev: &TextFieldEvent, cx| if matches!(ev, TextFieldEvent::Changed) { cx.notify(); }),
             cx.observe_window_bounds(window, |this, window, cx| crate::quick_note::remember(window, this.quick_note, cx)),
@@ -821,6 +842,9 @@ impl Workspace {
             ai_base_field,
             ai_model_field,
             ai_key_field,
+            template_index: None,
+            template_name_field,
+            template_body_field,
             store,
             entries,
             current: None,
@@ -934,6 +958,7 @@ impl Workspace {
             let page = match v.to_string_lossy().as_ref() {
                 "review" => crate::settings::Page::Review,
                 "appearance" => crate::settings::Page::Appearance,
+                "templates" => crate::settings::Page::Templates,
                 "about" => crate::settings::Page::About,
                 _ => crate::settings::Page::General,
             };
@@ -2610,4 +2635,43 @@ pub(crate) fn check_split(cx: &mut App) {
         assert_eq!(ws.open_docs().len(), 1);
         eprintln!("split-view: PASS; panes: {} + {}", frames[0], frames[1]);
     }).unwrap();
+}
+
+/// 模板 check against a real window, for `check-templates`: a template's
+/// Markdown lands in the open document as blocks, its placeholders filled in.
+#[cfg(feature = "devtools")]
+pub(crate) fn check_templates(cx: &mut App) {
+    let handle = cx.windows().into_iter().find_map(|w| w.downcast::<Workspace>()).expect("a workspace window");
+    // Two templates of our own, restored afterwards.
+    let saved = crate::settings::prefs();
+    let mine = vec![
+        crate::templates::Template { name: "Check".into(), body: "# {{title}}\n\n- [ ] {{date}} {{time}}\n".into() },
+        crate::templates::Template { name: "Plain".into(), body: "just a line".into() },
+    ];
+    let mut p = crate::settings::prefs();
+    p.templates = mine.clone();
+    crate::settings::save(&p).unwrap();
+    let out = handle.update(cx, |ws, window, cx| {
+        let ed = ws.editor.clone().expect("a document open");
+        ed.update(cx, |e, cx| {
+            e.insert_template(0, window, cx);
+            let text = e.core.doc.plain_text();
+            let title = e.core.doc.title.plain_text();
+            assert!(text.contains(&title), "{{{{title}}}} was not filled in: {text}");
+            let (y, mo, d, _, _) = crate::time::civil(crate::time::now());
+            assert!(text.contains(&format!("{y:04}-{mo:02}-{d:02}")), "{{{{date}}}} was not filled in: {text}");
+            assert!(!text.contains("{{"), "a placeholder was left: {text}");
+            // A heading came through as a heading, not literal "#".
+            assert!(e.core.doc.blocks.iter().any(|b| matches!(b.kind, crate::model::BlockKind::Heading { .. })), "the Markdown did not parse");
+            // A template with no placeholders inserts as it is.
+            e.insert_template(1, window, cx);
+            assert!(e.core.doc.plain_text().contains("just a line"), "a plain template did not insert");
+            text
+        })
+    }).unwrap();
+    // Leave the user's library as it was.
+    let mut p = crate::settings::prefs();
+    p.templates = saved.templates;
+    let _ = crate::settings::save(&p);
+    eprintln!("templates: PASS; inserted {:?}", out.lines().take(3).collect::<Vec<_>>());
 }

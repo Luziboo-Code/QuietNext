@@ -155,6 +155,9 @@ pub struct Preferences {
     /// 退格键回到标题: Backspace at the start of the body merges the first
     /// paragraph into the title (the default); off keeps the caret in the body.
     pub backspace_to_title: bool,
+    /// 模板: user-defined document templates, inserted at the caret.
+    #[serde(default = "default_templates")]
+    pub templates: Vec<crate::templates::Template>,
 }
 
 /// A week between asks to move the library to real folders.
@@ -195,11 +198,13 @@ fn review_max_default() -> u32 { 200 }
 fn review_retention_default() -> u32 { 90 }
 fn ai_base_default() -> String { "https://api.openai.com/v1".into() }
 fn ai_model_default() -> String { "gpt-4o-mini".into() }
+/// 模板: the built-in starters, shown until the user edits the list.
+fn default_templates() -> Vec<crate::templates::Template> { crate::templates::builtin() }
 
 impl Default for Preferences {
     fn default() -> Self {
         let lang = system_lang();
-        Preferences { theme: String::new(), feishu: true, english: lang != Lang::Zh, language: lang.code().into(), remote_images: true, quick_hotkey: true, auto_update: true, appearance: String::new(), seen_version: String::new(), motion: String::new(), new_default: String::new(), last_new: String::new(), search_engine: String::new(), start_home: false, browser: String::new(), opaque_window: false, ui_font: String::new(), page_width: String::new(), review_new_per_day: 20, review_max_per_day: 200, review_retention: 90, ai_base_url: ai_base_default(), ai_model: ai_model_default(), ui_family: String::new(), doc_family: String::new(), migrate_later: 0, find_regex: false, backspace_to_title: true }
+        Preferences { theme: String::new(), feishu: true, english: lang != Lang::Zh, language: lang.code().into(), remote_images: true, quick_hotkey: true, auto_update: true, appearance: String::new(), seen_version: String::new(), motion: String::new(), new_default: String::new(), last_new: String::new(), search_engine: String::new(), start_home: false, browser: String::new(), opaque_window: false, ui_font: String::new(), page_width: String::new(), review_new_per_day: 20, review_max_per_day: 200, review_retention: 90, ai_base_url: ai_base_default(), ai_model: ai_model_default(), ui_family: String::new(), doc_family: String::new(), migrate_later: 0, find_regex: false, backspace_to_title: true, templates: default_templates() }
     }
 }
 
@@ -366,13 +371,14 @@ pub(crate) fn watch_themes(cx: &mut Context<Workspace>) {
 // ---- the view
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Page { #[default] General, Appearance, Review, Shortcuts, Library, About }
+pub enum Page { #[default] General, Appearance, Templates, Review, Shortcuts, Library, About }
 
 impl Page {
     fn title(self) -> &'static str {
         match self {
             Page::General => tr("通用", "General"),
             Page::Appearance => tr("外观", "Appearance"),
+            Page::Templates => tr("模板", "Templates"),
             Page::Review => tr("复习", "Review"),
             Page::Shortcuts => tr("快捷键", "Shortcuts"),
             Page::Library => tr("文档库", "Documents"),
@@ -383,6 +389,7 @@ impl Page {
         match self {
             Page::General => "view-settings",
             Page::Appearance => "palette",
+            Page::Templates => "copy",
             Page::Review => "review",
             Page::Shortcuts => "keyboard",
             Page::Library => "storage",
@@ -392,7 +399,7 @@ impl Page {
 }
 
 /// The sidebar list, one evenly spaced run; `None` is 回收站 (its own view).
-const NAV: [Option<Page>; 7] = [Some(Page::General), Some(Page::Appearance), Some(Page::Review), Some(Page::Shortcuts), Some(Page::Library), None, Some(Page::About)];
+const NAV: [Option<Page>; 8] = [Some(Page::General), Some(Page::Appearance), Some(Page::Templates), Some(Page::Review), Some(Page::Shortcuts), Some(Page::Library), None, Some(Page::About)];
 
 // ---- controls (switch on the accent, 30pt buttons, grouped rows)
 
@@ -1079,6 +1086,7 @@ impl Workspace {
         let body = match page {
             Page::General => self.general_page(cx),
             Page::Appearance => self.appearance_page(cx),
+            Page::Templates => self.templates_page(cx),
             Page::Review => self.review_page(cx),
             Page::Shortcuts => self.shortcut_settings(cx),
             Page::Library => self.library_page(cx),
@@ -1297,6 +1305,132 @@ impl Workspace {
             .child(div().px(px(4.)).text_size(px(theme::ui_font_small())).line_height(px(theme::ui_font_small() + 5.)).text_color(Theme::text_caption())
                 .child(tr("卡片保存在文档库的 .quiet/review.json 中，只在本机使用。", "Cards live in the library's .quiet/review.json and stay on this computer.")))
             .into_any_element()
+    }
+
+    /// 设置 › 模板: the saved templates and the one being edited. A template
+    /// is a name and a Markdown body; ⌥⌘P in a note picks one.
+    fn templates_page(&self, cx: &mut Context<Self>) -> AnyElement {
+        let list = prefs().templates;
+        let editing = self.template_index;
+        let hint = crate::shortcuts::hint("editor::InsertTemplate", "⌥⌘P");
+        let row_line = |i: usize, t: &crate::templates::Template| {
+            let on = editing == Some(i);
+            let (pick, del) = (i, i);
+            let name: SharedString = if t.name.trim().is_empty() { tr("未命名模板", "Untitled template").into() } else { t.name.trim().into() };
+            let summary: SharedString = t.body.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().into();
+            div().id(SharedString::from(format!("template-row-{i}"))).group("template-row").w_full().px(px(16.)).py(px(9.)).flex().items_center().gap(px(12.)).cursor_pointer()
+                .when(on, |d| d.bg(Theme::fill_hover()))
+                .when(!on, |d| d.hover(|s| s.bg(Theme::fill_hover())))
+                .child(ui::icon("file-text", 15., if on { Theme::primary() } else { Theme::icon() }))
+                .child(div().flex_1().min_w_0().flex().flex_col().gap(px(1.))
+                    .child(div().text_size(px(theme::ui_font())).line_height(px(theme::ui_font() + 6.)).text_color(Theme::text()).overflow_hidden().whitespace_nowrap().text_ellipsis().child(name))
+                    .child(div().text_size(px(theme::ui_font_small())).line_height(px(theme::ui_font_small() + 4.)).text_color(Theme::text_caption()).overflow_hidden().whitespace_nowrap().text_ellipsis().child(summary)))
+                .child(link_button(SharedString::from(format!("template-del-{del}")), tr("删除", "Delete")).invisible().group_hover("template-row", |s| s.visible())
+                    .on_click(cx.listener(move |w, _, _, cx| w.delete_template(del, cx))))
+                .on_click(cx.listener(move |w, _, _, cx| w.edit_template(pick, cx)))
+        };
+        let rows: Vec<AnyElement> = list.iter().enumerate().map(|(i, t)| {
+            let line = row_line(i, t);
+            let last = i + 1 == list.len();
+            div().w_full().flex().flex_col().when(!last, |d| d.border_b_1().border_color(ui::list_line())).child(line).into_any_element()
+        }).collect();
+        let fields = |e: Entity<TextField>| div().w_full().flex().items_center().rounded(px(8.)).bg(Theme::fill_hover()).child(e);
+        let body_box = div().w_full().h(px(220.)).px(px(8.)).py(px(6.)).flex().rounded(px(8.)).border_1().border_color(Theme::line_border()).bg(Theme::window()).child(self.template_body_field.clone());
+        let editing_now = editing.filter(|i| *i < list.len());
+        div().w_full().flex().flex_col().gap(px(28.))
+            .child(group(None, vec![
+                row(tr("插入模板", "Insert a template"), Some(crate::localized_format!("在笔记里按 {}，从列表中选择一个模板插入到光标处。", "Press {} in a note and pick one from the list to insert it at the caret.", hint).into()),
+                    button("insert-template-now", tr("插入", "Insert")).on_click(cx.listener(|w, _, window, cx| {
+                        // The picker belongs to the note: leave 设置 for it first.
+                        let Some(id) = w.current.clone().or_else(|| w.entries.iter().find(|e| !e.meta.folder.is_some()).map(|e| e.id.clone())) else {
+                            return w.show_toast_kind(ui::ToastKind::Info, tr("先打开一篇笔记，再插入模板", "Open a note first, then insert a template"), cx);
+                        };
+                        w.show_view(crate::app::View::Doc, cx);
+                        w.open(&id, window, cx);
+                        // The picker hangs from the caret's block: wait for its first layout.
+                        cx.defer_in(window, |w, window, cx| {
+                            if let Some(ed) = w.editor.clone() { ed.update(cx, |e, cx| e.open_template_menu(None, window, cx)); }
+                        });
+                    }))).into_any_element(),
+                row(tr("新建模板", "New template"), desc(tr("从这里开始写一个自己的模板。", "Start a template of your own.")),
+                    button("template-new", tr("新建", "New")).on_click(cx.listener(|w, _, _, cx| w.new_template(cx)))).into_any_element(),
+            ]))
+            .child(group(Some(tr("我的模板", "My templates")), if rows.is_empty() {
+                vec![div().px(px(16.)).py(px(28.)).flex().justify_center().text_size(px(theme::ui_font_small())).text_color(Theme::text_caption()).child(tr("还没有模板", "No templates yet")).into_any_element()]
+            } else { rows }))
+            .children(editing_now.map(|i| {
+                let title: SharedString = { let n = list[i].name.trim().to_string(); if n.is_empty() { tr("未命名模板", "Untitled template").into() } else { n.into() } };
+                group(Some(tr("编辑模板", "Edit template")), vec![
+                    div().w_full().px(px(16.)).py(px(10.)).flex().flex_col().gap(px(6.))
+                        .child(caption(tr("名称", "Name")))
+                        .child(fields(self.template_name_field.clone())).into_any_element(),
+                    div().w_full().px(px(16.)).py(px(10.)).flex().flex_col().gap(px(6.))
+                        .child(caption(tr("内容", "Body")))
+                        .child(body_box).into_any_element(),
+                    div().w_full().px(px(16.)).py(px(10.)).flex().items_center().justify_between().gap(px(12.))
+                        .child(div().text_size(px(theme::ui_font_small())).line_height(px(theme::ui_font_small() + 5.)).text_color(Theme::text_caption())
+                            .child(crate::localized_format!("可用变量：{}。插入时会自动替换。", "Available variables: {}. They are filled in when inserted.",
+                                crate::templates::VARIABLES.iter().map(|(k, v)| format!("{k}（{v}）")).collect::<Vec<_>>().join("、"))))
+                        .child(div().flex().items_center().gap(px(8.))
+                            .child(link_button("template-cancel", tr("取消", "Cancel")).on_click(cx.listener(|w, _, _, cx| w.edit_template_stop(cx))))
+                            .child(button("template-save", tr("保存", "Save")).on_click(cx.listener(move |w, _, _, cx| w.save_template(i, cx))))).into_any_element(),
+                ]).child(div().px(px(4.)).text_size(px(theme::ui_font_small())).text_color(Theme::text_caption()).child(title)).into_any_element()
+            }))
+            .into_any_element()
+    }
+
+    /// 模板 › 新建: an empty template, selected for editing.
+    pub(crate) fn new_template(&mut self, cx: &mut Context<Self>) {
+        let mut list = prefs().templates;
+        list.push(crate::templates::Template::default());
+        let mut p = prefs();
+        p.templates = list.clone();
+        if let Err(e) = save(&p) { return self.template_error(&e, cx) }
+        self.template_name_field.update(cx, |f, cx| f.set_text("", cx));
+        self.template_body_field.update(cx, |f, cx| f.set_text("", cx));
+        self.template_index = Some(list.len() - 1);
+        cx.notify();
+    }
+
+    /// 模板 › a row: load it into the fields.
+    pub(crate) fn edit_template(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(t) = prefs().templates.get(index).cloned() else { return };
+        self.template_name_field.update(cx, |f, cx| f.set_text(&t.name, cx));
+        self.template_body_field.update(cx, |f, cx| f.set_text(&t.body, cx));
+        self.template_index = Some(index);
+        cx.notify();
+    }
+
+    pub(crate) fn edit_template_stop(&mut self, cx: &mut Context<Self>) {
+        self.template_index = None;
+        cx.notify();
+    }
+
+    /// 模板 › 保存: write the name and body back.
+    pub(crate) fn save_template(&mut self, index: usize, cx: &mut Context<Self>) {
+        let name = self.template_name_field.read(cx).text.clone();
+        let body = self.template_body_field.read(cx).text.clone();
+        let mut p = prefs();
+        let Some(t) = p.templates.get_mut(index) else { return self.edit_template_stop(cx) };
+        t.name = name.trim().to_string();
+        t.body = body;
+        if let Err(e) = save(&p) { return self.template_error(&e, cx) }
+        self.template_index = None;
+        self.show_toast(tr("模板已保存", "Template saved"), cx);
+    }
+
+    /// 模板 › 删除.
+    pub(crate) fn delete_template(&mut self, index: usize, cx: &mut Context<Self>) {
+        let mut p = prefs();
+        if index >= p.templates.len() { return }
+        p.templates.remove(index);
+        if let Err(e) = save(&p) { return self.template_error(&e, cx) }
+        self.template_index = None;
+        cx.notify();
+    }
+
+    fn template_error(&mut self, e: &impl std::fmt::Display, cx: &mut Context<Self>) {
+        self.show_toast_kind(ui::ToastKind::Error, &format!("{}{e}", tr("设置保存失败：", "Could not save settings: ")), cx);
     }
 
     pub(crate) fn save_ai_settings(&mut self, cx: &mut Context<Self>) {
@@ -1696,6 +1830,11 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "分屏打开" => "Open in split view",
         "关闭分屏" => "Close split view",
         "从侧栏选择一个文档，在这里打开" => "Pick a document in the sidebar to open it here",
+        "未命名模板" => "Untitled template",
+        "模板" => "Templates",
+        "插入模板" => "Insert template",
+        "模板名称" => "Template name",
+        "模板内容（Markdown）" => "Template body (Markdown)",
         "搜索目标位置" => "Search destinations",
         "移动成功" => "Moved successfully",
         "无搜索结果" => "No results",
@@ -2311,6 +2450,21 @@ mod localization_tests {
 #[cfg(test)]
 mod preference_tests {
     use super::Preferences;
+
+    #[test]
+    fn templates_read_from_older_files_and_round_trip() {
+        // Files from before 模板 get the built-in starters.
+        let old: Preferences = serde_json::from_str("{}").unwrap();
+        assert_eq!(old.templates, crate::templates::builtin());
+        // A saved list is what the user has, including an empty one.
+        let saved: Preferences = serde_json::from_str("{\"templates\":[{\"name\":\"A\",\"body\":\"- [ ] A\"}]}").unwrap();
+        assert_eq!(saved.templates.len(), 1);
+        assert_eq!(saved.templates[0].name, "A");
+        let round_trip: Preferences = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+        assert_eq!(round_trip.templates, saved.templates);
+        let cleared: Preferences = serde_json::from_str(r#"{"templates":[]}"#).unwrap();
+        assert!(cleared.templates.is_empty());
+    }
 
     #[test]
     fn new_preferences_use_feishu_without_overriding_saved_themes() {

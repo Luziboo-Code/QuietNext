@@ -324,6 +324,7 @@ impl Editor {
             Some(Menu::CoverPick { upload }) => self.cover_panel(upload, window, cx),
             Some(Menu::Button { block, offset }) => self.button_panel(block, offset, window, cx),
             Some(Menu::Reminder { block, offset }) => self.reminder_popover(block, offset, window, cx),
+            Some(Menu::Template { pos, selected }) => self.template_picker(pos, selected, window, cx),
             _ => None,
         };
         out.extend(menu_el);
@@ -1271,6 +1272,58 @@ impl Editor {
             (point(x, below), Anchor::TopLeft)
         };
         Some(at(self.rel(pos), corner, el))
+    }
+
+    // ---- 模板
+
+    /// 模板's picker: one row per saved template, the highlighted one filling
+    /// with the quiet hover colour. Placed at the content point it was opened at.
+    fn template_picker(&self, pos: Point<Pixels>, selected: usize, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let templates = crate::settings::prefs().templates;
+        let mut list = div().id("template-list").max_h(px(288.)).overflow_y_scroll().flex().flex_col();
+        for (i, t) in templates.iter().enumerate() {
+            let name: SharedString = if t.name.trim().is_empty() { crate::settings::text("未命名模板").into() } else { t.name.clone().into() };
+            // The first line of the body, as a one-line summary.
+            let summary: SharedString = t.body.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().chars().take(40).collect::<String>().into();
+            list = list.child(
+                div()
+                    .id(("template", i))
+                    .flex_none()
+                    .h(px(MENU_ROW_H))
+                    .mx(px(MENU_INSET))
+                    .px(px(8.))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .rounded(px(crate::ui::ROW_RADIUS))
+                    .cursor_pointer()
+                    .text_size(px(13.))
+                    .when(i == selected, |d| d.bg(Theme::fill_hover()))
+                    .hover(|s| s.bg(Theme::fill_hover()))
+                    .child(icon("file-text", 14., Theme::icon()))
+                    .child(div().flex_none().child(name))
+                    .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(12.)).text_color(Theme::text_caption()).child(summary))
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |e, _, window, cx| {
+                        cx.stop_propagation();
+                        e.insert_template(i, window, cx);
+                    })),
+            );
+        }
+        let h = px(2. * MENU_PAD_Y + (templates.len().max(1) as f32 * MENU_ROW_H).min(288.) + 2.);
+        let below = pos.y + px(6.) + h;
+        let (origin, corner) = if below > window.viewport_size().height - px(8.) && pos.y - h >= px(8.) {
+            (point(pos.x, pos.y - px(2.)), Anchor::BottomLeft)
+        } else {
+            (pos, Anchor::TopLeft)
+        };
+        let el = menu()
+            .id("template-menu")
+            .occlude()
+            .w(px(280.))
+            .py(px(MENU_PAD_Y))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(list);
+        Some(at(self.rel(origin), corner, el))
     }
 
     // ---- floating text toolbar

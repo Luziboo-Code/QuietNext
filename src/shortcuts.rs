@@ -262,6 +262,7 @@ fn info(name: &str) -> Option<(usize, &'static str, &'static str)> {
         "TurnQuote" => (4, "引用", "Quote"),
         "InsertDivider" => (4, "分隔线", "Divider"),
         "InsertTable" => (4, "插入表格", "Insert table"),
+        "InsertTemplate" => (2, "插入模板", "Insert template"),
         "AlignLeft" => (4, "左对齐", "Align left"),
         "AlignCenter" => (4, "居中对齐", "Align center"),
         "AlignRight" => (4, "右对齐", "Align right"),

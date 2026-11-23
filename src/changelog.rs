@@ -29,6 +29,7 @@ const NOTES: &[(&str, &[(&str, &str)])] = &[
         ("画板支持触控板双指缩放；窗口变窄时收起的侧栏，放宽后自动展开", "Pinch to zoom boards on a trackpad; a sidebar hidden by a narrow window comes back when it widens"),
         ("修复切换文档卡顿、代码块折叠不保存、画板选背景色时崩溃和深色模式下按钮看不清", "Fix lag when switching documents, code block folds not saving, a crash in the board's background picker, and hard-to-read buttons in dark mode"),
         ("分屏：「…」›「分屏打开」，或按 ⌘⇧\\，在同一窗口并排打开两个文档", "Split view: … › Open in split view, or ⌘⇧\\, to work on two documents side by side"),
+        ("模板：在 设置 › 模板 里写自己的模板，笔记里按 ⌥⌘P 插入（{{date}}、{{title}} 等会替换）", "Templates: write your own in Settings › Templates, insert one with ⌥⌘P ({{date}}, {{title}} and more are filled in)"),
     ]),
     ("0.1.13", &[
         ("画板：在文档里插入，或直接打开 .excalidraw 文件", "Boards: add one to a note, or open .excalidraw files"),

@@ -370,6 +370,13 @@ impl Workspace {
                         }
                     })))
                     .child(
+                        sub_item("dm-template", crate::settings::tr("插入模板", "Insert template"))
+                            .on_click(cx.listener(|w, _, window, cx| {
+                                w.close_doc_menu(cx);
+                                if let Some(ed) = w.editor.clone() { ed.update(cx, |e, cx| e.open_template_menu(None, window, cx)); }
+                            })),
+                    )
+                    .child(
                         sub_item("dm-refs", crate::settings::text("显示引用列表"))
                             .justify_between()
                             .child(

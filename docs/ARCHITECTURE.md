@@ -135,6 +135,7 @@ Whiteboard and history modules in core:
 | `home.rs` / `trash.rs` | Home and trash |
 | `search.rs` | Search dialog and advanced search |
 | `docmenu.rs` / `docinfo.rs` / `modes.rs` | More menu, document information, edit/read mode switch and shortcut panel. 分屏 (split view) opens a document beside the open one; each pane keeps its own document, undo stack and menus (`PaneState` in `app.rs`). |
+| `templates.rs` | 模板: a name and a Markdown body, saved in `preferences.json`, inserted at the caret with ⌥⌘P. `{{date}}`, `{{time}}`, `{{weekday}}`, `{{title}}` and `{{clipboard}}` are filled in on insert. |
 | `theme.rs` | `craft` scale, semantic `Theme::*` colors, named display colors, `shadow_*`, type scale and note panel dimensions |
 | `ui.rs` / `input.rs` | Shared menu shells and rows, white pill buttons, hints, toasts and single-line input |
 | `highlight.rs` | Code highlighting |

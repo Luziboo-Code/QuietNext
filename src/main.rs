@@ -61,6 +61,7 @@ mod folders;
 mod file_history;
 mod settings;
 mod table;
+mod templates;
 mod l10n;
 mod themes;
 mod fonts;

@@ -311,6 +311,10 @@ pub fn start(window: &mut Window, cx: &mut App) {
                 cx.update(crate::app::check_split);
                 continue;
             }
+            if cmd == "check-templates" {
+                cx.update(crate::app::check_templates);
+                continue;
+            }
             #[cfg(target_os = "macos")]
             let handled = mouse_step(ns_view, cmd, &nums(rest));
             #[cfg(not(target_os = "macos"))]

@@ -70,6 +70,8 @@ actions!(
         TurnQuote,
         InsertDivider,
         InsertTable,
+        /// 模板: pick one and insert its Markdown at the caret.
+        InsertTemplate,
         AlignLeft,
         AlignCenter,
         AlignRight,
@@ -170,6 +172,8 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd->", TurnQuote, c),
         KeyBinding::new("cmd-alt-s", InsertDivider, c),
         KeyBinding::new("cmd-alt-a", InsertTable, c),
+        // 模板: ⌥⌘P (⌥⌘T is the to-do list, ⌥⌘A the table).
+        KeyBinding::new("cmd-alt-p", InsertTemplate, c),
         KeyBinding::new("cmd-shift-l", AlignLeft, c),
         KeyBinding::new("cmd-shift-e", AlignCenter, c),
         KeyBinding::new("cmd-shift-r", AlignRight, c),

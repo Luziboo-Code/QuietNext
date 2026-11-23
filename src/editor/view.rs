@@ -105,6 +105,8 @@ pub enum Menu {
     Button { block: BlockId, offset: usize },
     /// The 日期提醒 at `offset`.
     Reminder { block: BlockId, offset: usize },
+    /// 模板: the picker beside `pos`, with this one highlighted.
+    Template { pos: Point<Pixels>, selected: usize },
 }
 
 pub type BoundsMap = Rc<RefCell<HashMap<BlockId, Bounds<Pixels>>>>;
@@ -190,6 +192,8 @@ pub struct Editor {
     pub lang_field: Entity<TextField>,
     pub emoji_field: Entity<TextField>,
     pub emoji_scroll: ScrollHandle,
+    /// 模板's picker scroll (kept on the highlighted row).
+    pub template_scroll: ScrollHandle,
     /// The emoji search box was clicked or typed into (draws its focus ring).
     pub emoji_search_active: bool,
     pub(super) cover_ui: super::cover::CoverUi,
@@ -441,6 +445,7 @@ impl Editor {
             lang_field,
             emoji_field,
             emoji_scroll: ScrollHandle::new(),
+            template_scroll: ScrollHandle::new(),
             emoji_search_active: false,
             cover_ui: super::cover::CoverUi::new(),
             find: None,
@@ -675,6 +680,78 @@ impl Editor {
         }
     }
 
+    /// 模板: the picker beside the caret (⌥⌘P) or where a click asked for it.
+    /// With no templates saved nothing opens and the 设置 page is pointed at.
+    pub fn open_template_menu(&mut self, pos: Option<Point<Pixels>>, _window: &mut Window, cx: &mut Context<Self>) {
+        let list = crate::settings::prefs().templates;
+        if list.is_empty() {
+            self.toast(crate::settings::tr("还没有模板：在 设置 › 模板 中新建一个", "No templates yet: add one in Settings › Templates"), cx);
+            return;
+        }
+        // Place it at the caret's block, a little below its first line; the top
+        // of the page when that block was never laid out (first frame).
+        let rect = self.block_rect(self.core.sel.head.block);
+        let top = rect.map_or_else(|| px(crate::app::HEADER_H + 12.), |b| b.top() + px(6.));
+        let left = rect.map_or_else(|| px(32.), |b| b.left() - px(2.));
+        let pos = pos.unwrap_or_else(|| point(left, top));
+        self.slash = None;
+        self.template_scroll.set_offset(Point::default());
+        self.menu = Some(Menu::Template { pos, selected: 0 });
+        cx.notify();
+    }
+
+    /// 模板 › the row picked: its Markdown at the caret, placeholders filled in.
+    /// Parsed as a whole (headings, lists, to-dos), not as inline text, since a
+    /// template is a snippet of a document rather than a line in one.
+    pub fn insert_template(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let prefs = crate::settings::prefs();
+        let Some(t) = prefs.templates.get(index) else { return };
+        let clipboard = cx.read_from_clipboard().and_then(|i| i.entries().iter().find_map(|e| match e {
+            ClipboardEntry::String(s) => Some(s.text().clone()),
+            _ => None,
+        }));
+        let body = crate::templates::expand(&t.body, &self.core.doc.title.plain_text(), clipboard.as_deref());
+        self.menu = None;
+        self.hover = None;
+        self.core.clear_block_sel();
+        let blocks = crate::paste::markdown_to_blocks(&body, crate::paste::Off::default());
+        if blocks.is_empty() { self.core.paste_text(&body) } else { self.core.paste_blocks(blocks) }
+        self.changed(window, cx);
+    }
+
+    /// ↑ / ↓ / ↩ while the 模板 picker is open. True when consumed.
+    fn template_key(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(Menu::Template { selected, .. }) = self.menu else { return false };
+        let n = crate::settings::prefs().templates.len();
+        if n == 0 { return false }
+        match key {
+            "up" => {
+                let next = (selected + n - 1) % n;
+                self.menu = Some(Menu::Template { pos: self.template_pos(), selected: next });
+                self.template_scroll.scroll_to_item(next);
+            }
+            "down" => {
+                let next = (selected + 1) % n;
+                self.menu = Some(Menu::Template { pos: self.template_pos(), selected: next });
+                self.template_scroll.scroll_to_item(next);
+            }
+            "enter" | "return" => self.insert_template(selected, window, cx),
+            "escape" => self.close_menu_focus(window, cx),
+            _ => return false,
+        }
+        cx.notify();
+        true
+    }
+
+    /// Where the open 模板 picker hangs (it moves with the highlighted row's
+    /// struct update).
+    fn template_pos(&self) -> Point<Pixels> {
+        match self.menu {
+            Some(Menu::Template { pos, .. }) => pos,
+            _ => Point::default(),
+        }
+    }
+
     pub fn close_menu_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.menu = None;
         self.menu_hovered = false;
@@ -774,6 +851,17 @@ impl Editor {
 
     /// Keys while the slash menu or the "+" panel is open. Returns true when consumed.
     fn list_menu_key(&mut self, key: ListKey, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        // 模板's picker takes ↑ ↓ ↩ first.
+        if matches!(self.menu, Some(Menu::Template { .. })) {
+            let name = match key {
+                ListKey::Up => "up",
+                ListKey::Down => "down",
+                ListKey::Enter => "enter",
+                ListKey::Close => "escape",
+                ListKey::Left | ListKey::Right | ListKey::CloseAndPass => return false,
+            };
+            return self.template_key(name, window, cx);
+        }
         if self.mention.is_some() {
             return match key {
                 ListKey::Up | ListKey::Down => self.mention_key(Some(matches!(key, ListKey::Up)), false, false, window, cx),
@@ -973,6 +1061,8 @@ impl Editor {
             }
             SlashKind::Button => return self.insert_new_button(action, window, cx),
             SlashKind::Reminder => return self.insert_new_reminder(window, cx),
+            // 模板: the body goes at the caret, where the "/模板" query was.
+            SlashKind::Template => return self.open_template_menu(None, window, cx),
             SlashKind::Divider => {
                 let k = BlockKind::Divider;
                 let nid = self.core.insert_block(Block::new(k, RichText::default()));
@@ -2239,6 +2329,13 @@ impl Editor {
         }
     }
 
+    /// 模板: pick one from the list and insert its body at the caret.
+    fn on_insert_template(&mut self, _: &k::InsertTemplate, window: &mut Window, cx: &mut Context<Self>) {
+        if self.guard(window, cx) {
+            self.open_template_menu(None, window, cx);
+        }
+    }
+
     fn on_align_left(&mut self, _: &k::AlignLeft, window: &mut Window, cx: &mut Context<Self>) {
         if self.guard(window, cx) {
             self.align(Align::Left, window, cx);
@@ -2359,6 +2456,7 @@ impl Editor {
             .on_action(guard(cx, Self::on_turn_quote))
             .on_action(guard(cx, Self::on_insert_divider))
             .on_action(guard(cx, Self::on_insert_table))
+            .on_action(guard(cx, Self::on_insert_template))
             .on_action(guard(cx, Self::on_align_left))
             .on_action(guard(cx, Self::on_align_center))
             .on_action(guard(cx, Self::on_align_right))
