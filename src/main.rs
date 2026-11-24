@@ -20,6 +20,7 @@ mod assets;
 mod changelog;
 mod guides;
 mod clipboard;
+mod comments;
 #[cfg(feature = "devtools")]
 mod devtools;
 /// Without the `devtools` feature (release builds) nothing reads FDL_SCRIPT.

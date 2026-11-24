@@ -281,6 +281,11 @@ pub struct PaneState {
     dirty_since: Option<Instant>,
     save_task: Option<Task<()>>,
     pub status: SaveStatus,
+    /// 批注 of this pane's document.
+    pub comments: Vec<crate::comments::Comment>,
+    pub comments_open: bool,
+    pub comment_editing: Option<usize>,
+    pub comment_selected: HashSet<String>,
     /// Last-frame bounds of this pane's header "…" button, to hang its menu from.
     pub more_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
     /// This pane's "…" menu, its open submenu, 文档信息 and 版本历史.
@@ -303,6 +308,10 @@ impl PaneState {
             dirty_since: w.dirty_since.take(),
             save_task: w.save_task.take(),
             status: std::mem::replace(&mut w.status, SaveStatus::Idle),
+            comments: std::mem::take(&mut w.comments),
+            comments_open: std::mem::take(&mut w.comments_open),
+            comment_editing: w.comment_editing.take(),
+            comment_selected: std::mem::take(&mut w.comment_selected),
             more_bounds: w.more_btn_bounds.clone(),
             doc_menu: std::mem::take(&mut w.doc_menu),
             doc_sub: w.doc_sub.take(),
@@ -322,6 +331,10 @@ impl PaneState {
         w.dirty_since = self.dirty_since;
         w.save_task = self.save_task;
         w.status = self.status;
+        w.comments = self.comments;
+        w.comments_open = self.comments_open;
+        w.comment_editing = self.comment_editing;
+        w.comment_selected = self.comment_selected;
         w.more_btn_bounds = self.more_bounds;
         w.doc_menu = self.doc_menu;
         w.doc_sub = self.doc_sub;
@@ -375,6 +388,12 @@ pub struct Workspace {
     pub sync_s3_prefix_field: Entity<TextField>,
     pub sync_s3_access_field: Entity<TextField>,
     pub sync_s3_secret_field: Entity<TextField>,
+    /// 批注: the current document's comments, the edit field and the panel state.
+    pub comments: Vec<crate::comments::Comment>,
+    pub comments_open: bool,
+    pub comment_editing: Option<usize>,
+    pub comment_selected: HashSet<String>,
+    pub comment_field: Entity<TextField>,
     /// 设置 › 模板: the template being edited (index into `prefs().templates`),
     /// its name and its body.
     pub template_index: Option<usize>,
@@ -729,6 +748,13 @@ impl Workspace {
         let sync_s3_access_field = sync_field(cx, "Access Key", &sync_config.s3_access_key);
         let sync_s3_secret_field = sync_field(cx, "Secret Key", &sync_config.s3_secret_key);
         let sync_status = (!sync_config.last_status.is_empty()).then(|| SharedString::from(sync_config.last_status.clone()));
+        let comment_field = cx.new(|cx| {
+            let mut f = TextField::new(crate::settings::tr("添加批注…", "Add a comment…"), cx);
+            f.size = 12.;
+            f.line_height = 18.;
+            f.max_len = Some(2000);
+            f
+        });
         let template_name_field = cx.new(|cx| {
             let mut f = TextField::new(crate::settings::tr("模板名称", "Template name"), cx);
             f.size = 13.;
@@ -747,6 +773,10 @@ impl Workspace {
         });
         let subs = vec![
             cx.subscribe(&settings_filter, |_, _, ev: &TextFieldEvent, cx| if matches!(ev, TextFieldEvent::Changed) { cx.notify(); }),
+            cx.subscribe_in(&comment_field, window, |this, _, ev: &TextFieldEvent, _, cx| {
+                if matches!(ev, TextFieldEvent::Submit | TextFieldEvent::Cancel) { this.finish_comment(cx); }
+            }),
+            cx.on_focus_out(&comment_field.focus_handle(cx), window, |this, _, _, cx| this.finish_comment(cx)),
             cx.observe_window_bounds(window, |this, window, cx| crate::quick_note::remember(window, this.quick_note, cx)),
             // The system switched between light and dark (or the app's own look changed).
             cx.observe_window_appearance(window, |this, _, cx| if crate::settings::sync_dark(cx) { crate::settings::refresh_all(this, cx); }),
@@ -888,6 +918,11 @@ impl Workspace {
             sync_s3_prefix_field,
             sync_s3_access_field,
             sync_s3_secret_field,
+            comments: Vec::new(),
+            comments_open: false,
+            comment_editing: None,
+            comment_selected: HashSet::new(),
+            comment_field,
             template_index: None,
             template_name_field,
             template_body_field,
@@ -1039,6 +1074,8 @@ impl Workspace {
     /// Show `id`; false when it could not be opened (or the open document
     /// could not be saved first, see [`Self::save_before`]).
     pub fn try_open(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        // Finish an open annotation before its document leaves.
+        self.finish_comment(cx);
         // 分屏: a document already open in the other pane comes to the front
         // instead of opening a second copy of itself.
         if self.split.is_some() && self.pane_doc(!self.active_second) == Some(id) {
@@ -1134,6 +1171,7 @@ impl Workspace {
             && self.document_peers(previous, window, cx).is_empty() { self.store.forget_loaded(previous); }
         self.editor = Some(editor);
         self.current = Some(id.to_string());
+        self.load_comments(id, cx);
         // Web images pasted earlier whose download landed after it closed (#220).
         if let Some(e) = self.editor.clone() { e.update(cx, |e, cx| e.adopt_remote(cx)); }
         crate::quick_note::used(id, cx);
@@ -1163,6 +1201,7 @@ impl Workspace {
             }
             EditorEvent::Mode(reading) => self.set_mode(*reading, window, cx),
             EditorEvent::Info(info) => self.set_info_row(*info),
+            EditorEvent::Comment(quote) => self.begin_comment(quote.clone(), window, cx),
             EditorEvent::Toast => {
                 self.toast = None;
                 cx.notify();
@@ -2161,12 +2200,12 @@ impl Workspace {
     /// 分屏: the two documents side by side, each with its own top bar, editor
     /// and 快捷键 drawer. Each pane is laid out from the window's own fields,
     /// so [`Self::with_pane`] swaps the other one in while it renders.
-    fn render_panes(&mut self, pane_w: f32, cx: &mut Context<Self>) -> AnyElement {
+    fn render_panes(&mut self, pane_w: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let mut panes = vec![];
         for second in [false, true] {
             let drawer = second == self.active_second;
             let pane = if self.pane_doc(second).is_some() {
-                self.with_pane(second, |w| w.render_pane(pane_w / 2., second, drawer, cx))
+                self.with_pane(second, |w| w.render_pane(pane_w / 2., second, drawer, window, cx))
             } else {
                 self.render_empty_pane(second, cx)
             };
@@ -2233,7 +2272,7 @@ impl Workspace {
     /// One pane of 分屏: the header, its editor and (when it is the active
     /// pane) the 快捷键 drawer. The window's fields already belong to this pane
     /// (`with_pane`).
-    fn render_pane(&mut self, pane_w: f32, second: bool, drawer: bool, cx: &mut Context<Self>) -> AnyElement {
+    fn render_pane(&mut self, pane_w: f32, second: bool, drawer: bool, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         div()
             .flex_1()
             .min_w_0()
@@ -2250,6 +2289,7 @@ impl Workspace {
                     // A click anywhere in the pane makes it the one keys and menus act on.
                     .capture_any_mouse_down(cx.listener(move |w, _, _, cx| w.set_active_pane(second, cx)))
                     .child(div().relative().flex_1().min_w_0().h_full().children(self.editor.clone()))
+                    .when(drawer && self.comments_open, |d| d.child(self.render_comments(window, cx)))
                     .when(drawer, |d| d.children(self.render_shortcuts(cx))),
             )
             .into_any_element()
@@ -2327,7 +2367,7 @@ impl Render for Workspace {
         let main = match self.view {
             View::Doc if self.split.is_some() => {
                 let pane_w = f32::from(window.viewport_size().width) - if self.sidebar_open { self.sidebar_w(window) } else { 0. };
-                self.render_panes(pane_w, cx)
+                self.render_panes(pane_w, window, cx)
             }
             View::Doc => div()
                 .flex_1()
@@ -2350,6 +2390,7 @@ impl Render for Workspace {
                                 .h_full()
                                 .children(self.editor.clone()),
                         )
+                        .when(self.comments_open, |d| d.child(self.render_comments(window, cx)))
                         .children(self.render_shortcuts(cx)),
                 )
                 .into_any_element(),

@@ -142,6 +142,7 @@ Gracias a todas las personas que han ayudado a construir Quiet.md. Los issues y 
 
 ## Novedades recientes
 
+- **0.1.17** (24 nov.): comentarios nuevos. Selecciona texto, usa el botón Comentario de la barra de herramientas y añade, edita o elimina en el panel derecho; también puedes seleccionar varios y borrarlos juntos. Vuelve el menú de barra completa en los documentos Markdown.
 - **0.1.16** (24 nov.): sincroniza toda la biblioteca y sus ajustes `.quiet` con WebDAV o almacenamiento compatible con S3. Sube, descarga, sincroniza en ambos sentidos o automáticamente cada cinco minutos.
 - **0.1.15** (23 nov.): nuevo icono Q. Bloquear la edición tiene atajo (⌘⇧K en macOS, Ctrl+Shift+K en Windows). La exportación como imagen captura la página completa, con sus márgenes.
 - **0.1.14** (21 nov): buscar y reemplazar con expresiones regulares. Los `[[enlaces wiki]]` de Obsidian abren la nota a la que apuntan. Interfaz en turco, y el árabe se muestra de derecha a izquierda. Elige la fuente de la interfaz y la de los documentos, y retira las imágenes y archivos que ninguna nota usa. La búsqueda sigue el ritmo en bibliotecas grandes y borrar muchas notas es más rápido. Un ajuste para que Retroceso vuelva al título; en Windows y Linux, Copiar como Markdown pasa a ser Ctrl+Shift+M.

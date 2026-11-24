@@ -142,6 +142,7 @@ Merci à toutes les personnes qui ont contribué à construire Quiet.md. Issues 
 
 ## Dernières mises à jour
 
+- **0.1.17** (24 nov.) : ajout des commentaires. Sélectionnez du texte, utilisez le bouton Commentaire de la barre d’outils, puis ajoutez, modifiez ou supprimez dans le panneau de droite ; plusieurs commentaires peuvent être supprimés ensemble. Le menu slash complet revient dans les documents Markdown.
 - **0.1.16** (24 nov.) : synchronisez toute la bibliothèque et ses réglages `.quiet` vers WebDAV ou un stockage compatible S3. Envoi, téléchargement, synchronisation bidirectionnelle immédiate ou automatique toutes les cinq minutes.
 - **0.1.15** (23 nov.) : nouvelle icône Q. Le verrouillage de l’édition a un raccourci (⌘⇧K sur macOS, Ctrl+Shift+K sous Windows). L’export en image capture toute la page, marges comprises.
 - **0.1.14** (21 nov) : rechercher-remplacer avec des expressions régulières. Les `[[liens wiki]]` d'Obsidian ouvrent la note visée. Interface en turc, et l'arabe s'affiche de droite à gauche. Choisissez la police de l'interface et celle des documents, et retirez les images et fichiers qu'aucune note n'utilise. La recherche suit dans les grandes bibliothèques, et supprimer beaucoup de notes est plus rapide. Un réglage pour que Retour arrière revienne au titre ; sous Windows et Linux, Copier en Markdown devient Ctrl+Maj+M.

@@ -1159,4 +1159,10 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("自动同步失败：{}", "Échec de la synchronisation auto : {}"),
     ("同步设置已保存", "Paramètres de synchronisation enregistrés"),
     ("Bucket 名称。", "Nom du bucket."),
+    ("批注", "Commentaire"),
+    ("添加批注…", "Ajouter un commentaire…"),
+    ("还没有批注。选择文字后点击工具栏上的批注按钮。", "Aucun commentaire. Sélectionnez du texte puis utilisez le bouton Commentaire de la barre d’outils."),
+    ("点击添加批注", "Cliquez pour commenter"),
+    ("删除选中 {}", "Supprimer {}"),
+    ("批注保存失败：", "Impossible d’enregistrer le commentaire : "),
 ];

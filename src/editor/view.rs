@@ -37,6 +37,8 @@ pub enum EditorEvent {
     Mode(bool),
     /// 选择要展示的文档信息 / 隐藏文档信息 changed the info row.
     Info(crate::store::InfoRow),
+    /// The toolbar's 批注 button: annotate this selected text.
+    Comment(String),
     /// The editor showed a toast (the workspace drops its own).
     Toast,
     /// A 创建副本 button was clicked.
@@ -799,7 +801,6 @@ impl Editor {
         let (grid, with_text) = (self.slash_grid(), self.slash_grid_text());
         let ranked: Vec<usize> =
             ranked.into_iter().filter(|i| menus::SLASH_ITEMS[*i].group != 0 || menus::basic_visible(menus::SLASH_ITEMS[*i].kind, grid, with_text))
-                .filter(|i| !self.markdown || menus::markdown_ok(menus::SLASH_ITEMS[*i].kind))
                 .filter(|i| crate::DATATABLE || menus::SLASH_ITEMS[*i].kind != SlashKind::DataTable).collect();
         let mut groups: Vec<usize> = vec![];
         for i in &ranked {

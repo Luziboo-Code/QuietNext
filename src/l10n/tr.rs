@@ -1127,4 +1127,10 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("自动同步失败：{}", "Otomatik eşitleme başarısız: {}"),
     ("同步设置已保存", "Eşitleme ayarları kaydedildi"),
     ("Bucket 名称。", "Bucket adı."),
+    ("批注", "Yorum"),
+    ("添加批注…", "Yorum ekle…"),
+    ("还没有批注。选择文字后点击工具栏上的批注按钮。", "Henüz yorum yok. Metin seçip araç çubuğundaki yorum düğmesini kullanın."),
+    ("点击添加批注", "Yorum eklemek için tıklayın"),
+    ("删除选中 {}", "{} öğeyi sil"),
+    ("批注保存失败：", "Yorum kaydedilemedi: "),
 ];

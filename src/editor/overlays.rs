@@ -5,7 +5,7 @@
 use super::core::{Pos, TITLE};
 use super::menus::{self, SLASH_ITEMS, TURN_ITEMS};
 use super::table::CellSelKind;
-use super::view::{BlockAct, BlockSub, Editor, Mark, Menu};
+use super::view::{BlockAct, BlockSub, Editor, EditorEvent, Mark, Menu};
 use crate::model::*;
 use crate::feishu_theme::{self as theme, Theme};
 use crate::editor_ui::{MENU_INSET, MENU_PAD_Y, MENU_ROW_H, TipExt, icon, menu, panel, popover};
@@ -20,7 +20,7 @@ const MENU_W: f32 = 247.;
 /// Table handle: 44.5 left of the grid, centred on the column-dot row 16.5 above it.
 const TABLE_HANDLE_DX: f32 = 44.5;
 const TABLE_HANDLE_DY: f32 = 16.5 + 13.;
-const TOOLBAR_W: f32 = 1. + 8. + 44. + 17. + 44. + 17. + 6. * 32. + 44. + 25. + 24. + 8. + 1.;
+const TOOLBAR_W: f32 = 1. + 8. + 44. + 17. + 44. + 17. + 6. * 32. + 44. + 25. + 24. + 24. + 8. + 1.;
 /// Callout hover bar: one 24px palette button in 10px padding, 1px border;
 /// it floats 9px above the callout, centred on it.
 const CALLOUT_BAR_W: f32 = 10. + 24. + 10. + 2.;
@@ -1480,6 +1480,20 @@ impl Editor {
             )
             .child(mark_btn("tb-code", "code", crate::settings::text("代码"), crate::shortcuts::hint("editor::InlineCode", "⌘ + Control + C"), Some(crate::settings::text("`代码`")), Mark::Code, |m| m.code))
             .when(!self.markdown, |d| d.child(color_btn))
+            .child(
+                btn("tb-comment")
+                    .w(px(24.))
+                    .tip_above(crate::settings::tr("批注", "Comment"), None)
+                    .child(icon("comment", 18., Theme::icon()))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|e, _, _, cx| {
+                            cx.stop_propagation();
+                            let quote = e.core.selected_text().trim().to_string();
+                            if !quote.is_empty() { cx.emit(EditorEvent::Comment(quote)); }
+                        }),
+                    ),
+            )
             .child(div().mx(px(4.)).w(px(1.)).h(px(40.)).bg(Theme::line_border()))
             .child(
                 btn("tb-more")

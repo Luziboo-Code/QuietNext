@@ -17,6 +17,11 @@ const REAL_FOLDERS: &str = "文档库改为真实文件夹，以标题命名，�
 /// Each version's notes: (version, [(中文, English)]). Only the running
 /// version's are shown; a version without notes shows nothing.
 const NOTES: &[(&str, &[(&str, &str)])] = &[
+    ("0.1.17", &[
+        ("新增批注：选择文字后点击工具栏的批注按钮，在右侧添加、编辑和删除批注", "New comments: select text, use the toolbar's comment button, then add, edit and delete notes in the right panel"),
+        ("批注支持多选后批量删除，保存在文档库的 .quiet 中并随同步一起备份", "Select several comments to delete them at once; comments live in the library's .quiet and travel with sync"),
+        ("恢复 Markdown 文档中完整的斜杠菜单内容", "Restore the full slash menu in Markdown documents"),
+    ]),
     ("0.1.16", &[
         ("新增同步：把整个文档库和 .quiet 配置同步到 WebDAV 或 S3 兼容存储", "New sync: mirror the whole library and its .quiet settings to WebDAV or S3-compatible storage"),
         ("支持同步到云端、从云端下载、立即双向同步，以及每五分钟自动同步", "Upload, download, sync both ways now, or sync automatically every five minutes"),
