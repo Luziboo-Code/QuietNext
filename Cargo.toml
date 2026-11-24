@@ -45,6 +45,10 @@ image = { version = "0.25", default-features = false, features = ["png", "tiff"]
 raw-window-handle = "0.6"
 rustc-hash = "2.1"
 web-time = { version = "1", features = ["serde"] }
+ureq = "2.12"
+url = "2"
+hmac = "0.12"
+hex = "0.4"
 katex-rs = { version = "0.3", default-features = false }
 regex = "1"
 html5ever = "0.27"

@@ -66,6 +66,7 @@ mod l10n;
 mod themes;
 mod fonts;
 mod shortcuts;
+mod sync;
 #[allow(dead_code, unused_imports)]
 mod feishu_theme;
 #[allow(dead_code, unused_imports)]

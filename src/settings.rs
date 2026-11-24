@@ -371,7 +371,7 @@ pub(crate) fn watch_themes(cx: &mut Context<Workspace>) {
 // ---- the view
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Page { #[default] General, Appearance, Templates, Review, Shortcuts, Library, About }
+pub enum Page { #[default] General, Appearance, Templates, Review, Sync, Shortcuts, Library, About }
 
 impl Page {
     fn title(self) -> &'static str {
@@ -380,6 +380,7 @@ impl Page {
             Page::Appearance => tr("外观", "Appearance"),
             Page::Templates => tr("模板", "Templates"),
             Page::Review => tr("复习", "Review"),
+            Page::Sync => tr("同步", "Sync"),
             Page::Shortcuts => tr("快捷键", "Shortcuts"),
             Page::Library => tr("文档库", "Documents"),
             Page::About => tr("关于", "About"),
@@ -391,6 +392,7 @@ impl Page {
             Page::Appearance => "palette",
             Page::Templates => "copy",
             Page::Review => "review",
+            Page::Sync => "restore",
             Page::Shortcuts => "keyboard",
             Page::Library => "storage",
             Page::About => "info",
@@ -399,7 +401,7 @@ impl Page {
 }
 
 /// The sidebar list, one evenly spaced run; `None` is 回收站 (its own view).
-const NAV: [Option<Page>; 8] = [Some(Page::General), Some(Page::Appearance), Some(Page::Templates), Some(Page::Review), Some(Page::Shortcuts), Some(Page::Library), None, Some(Page::About)];
+const NAV: [Option<Page>; 9] = [Some(Page::General), Some(Page::Appearance), Some(Page::Templates), Some(Page::Review), Some(Page::Sync), Some(Page::Shortcuts), Some(Page::Library), None, Some(Page::About)];
 
 // ---- controls (switch on the accent, 30pt buttons, grouped rows)
 
@@ -1088,6 +1090,7 @@ impl Workspace {
             Page::Appearance => self.appearance_page(cx),
             Page::Templates => self.templates_page(cx),
             Page::Review => self.review_page(cx),
+            Page::Sync => self.sync_page(cx),
             Page::Shortcuts => self.shortcut_settings(cx),
             Page::Library => self.library_page(cx),
             Page::About => self.about_page(cx),
@@ -1307,6 +1310,59 @@ impl Workspace {
             .into_any_element()
     }
 
+    /// 设置 › 同步: WebDAV or S3, manual both ways, and a periodic two-way run.
+    fn sync_page(&self, cx: &mut Context<Self>) -> AnyElement {
+        let cfg = &self.sync_config;
+        let field = |e: Entity<TextField>| div().w(px(280.)).h(px(30.)).px(px(8.)).flex().items_center().rounded(px(8.)).bg(Theme::fill_hover()).child(e);
+        let mut storage = vec![
+            row(tr("同步方式", "Protocol"), desc(tr("WebDAV 适合 NAS 和个人网盘；S3 适合对象存储。", "WebDAV suits NAS boxes and personal clouds; S3 suits object storage.")),
+                segmented("sync-protocol", &["WebDAV", "S3"], if cfg.is_s3() { 1 } else { 0 }, |w, i, cx| w.set_sync_protocol(i, cx), cx)).into_any_element(),
+        ];
+        if cfg.is_s3() {
+            storage.extend([
+                row(tr("S3 端点", "S3 endpoint"), desc(tr("例如 https://s3.us-east-1.amazonaws.com 或 MinIO 地址。", "For example https://s3.us-east-1.amazonaws.com or a MinIO URL.")),
+                    field(self.sync_s3_endpoint_field.clone())).into_any_element(),
+                row(tr("区域", "Region"), desc(tr("AWS 区域；留空为 us-east-1。", "AWS region; empty is us-east-1.")),
+                    field(self.sync_s3_region_field.clone())).into_any_element(),
+                row(tr("存储桶", "Bucket"), desc(tr("Bucket 名称。", "Bucket name.")),
+                    field(self.sync_s3_bucket_field.clone())).into_any_element(),
+                row(tr("前缀", "Prefix"), desc(tr("可选；库会同步到这个目录下。", "Optional; the library is mirrored under this folder.")),
+                    field(self.sync_s3_prefix_field.clone())).into_any_element(),
+                row("Access Key", None, field(self.sync_s3_access_field.clone())).into_any_element(),
+                row("Secret Key", None, field(self.sync_s3_secret_field.clone())).into_any_element(),
+            ]);
+        } else {
+            storage.extend([
+                row(tr("服务器地址", "Server URL"), desc(tr("WebDAV 目录地址，例如 https://dav.example.com/QuietNext。", "The WebDAV folder, such as https://dav.example.com/QuietNext.")),
+                    field(self.sync_dav_url_field.clone())).into_any_element(),
+                row(tr("用户名", "Username"), None, field(self.sync_dav_user_field.clone())).into_any_element(),
+                row(tr("密码", "Password"), None, field(self.sync_dav_password_field.clone())).into_any_element(),
+            ]);
+        }
+        storage.push(row(tr("保存同步设置", "Save sync settings"), None,
+            button("sync-save", tr("保存", "Save")).on_click(cx.listener(|w, _, _, cx| w.save_sync_settings(cx)))).into_any_element());
+
+        let status: SharedString = if self.sync_running { tr("正在同步…", "Syncing…").into() } else { self.sync_status.clone().unwrap_or_else(|| tr("尚未同步", "Not synced yet").into()) };
+        let actions = div().flex().items_center().gap(px(8.))
+            .child(button("sync-upload", tr("同步到云端", "Upload")).on_click(cx.listener(|w, _, window, cx| w.sync_now(crate::sync::Direction::Upload, window, cx))))
+            .child(button("sync-download", tr("从云端同步到本地", "Download")).on_click(cx.listener(|w, _, window, cx| w.sync_now(crate::sync::Direction::Download, window, cx))))
+            .child(button("sync-both", tr("立即双向同步", "Sync now")).on_click(cx.listener(|w, _, window, cx| w.sync_now(crate::sync::Direction::Both, window, cx))));
+        div().w_full().flex().flex_col().gap(px(28.))
+            .child(group(Some(tr("云端存储", "Cloud storage")), storage))
+            .child(group(Some(tr("同步", "Sync")), vec![
+                row(tr("自动同步", "Automatic sync"), desc(tr("每五分钟在后台双向同步一次。", "Two-way sync in the background every five minutes.")),
+                    switch("sync-auto", cfg.auto).on_click(cx.listener(|w, _, _, cx| w.set_sync_auto(!w.sync_config.auto, cx)))).into_any_element(),
+                row(tr("手动同步", "Manual sync"), desc(tr("手动上传或下载整个文档库。", "Upload or download the whole library now.")),
+                    actions).into_any_element(),
+                row(tr("同步状态", "Status"), None,
+                    div().w(px(280.)).text_size(px(theme::ui_font_small())).line_height(px(theme::ui_font_small() + 5.)).text_color(Theme::text_caption()).child(status)).into_any_element(),
+            ]))
+            .child(div().px(px(4.)).text_size(px(theme::ui_font_small())).line_height(px(theme::ui_font_small() + 5.)).text_color(Theme::text_caption())
+                .child(tr("同步会复制整个文档库，包括 .quiet 中的偏好、快捷键、主题、复习和日历数据。账号和密钥只保存在这台电脑。同步不会自动删除文件，冲突时云端版本会另存为副本。",
+                    "Sync copies the whole library, including preferences, shortcuts, themes, review and calendar data in .quiet. Account details and keys stay on this computer. Sync never deletes files; a conflicting cloud copy is saved beside the local one.")))
+            .into_any_element()
+    }
+
     /// 设置 › 模板: the saved templates and the one being edited. A template
     /// is a name and a Markdown body; ⌥⌘P in a note picks one.
     fn templates_page(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -1476,6 +1532,154 @@ impl Workspace {
             return;
         }
         self.show_toast(tr("AI 设置已保存", "AI settings saved"), cx);
+    }
+
+    pub(crate) fn set_sync_protocol(&mut self, i: usize, cx: &mut Context<Self>) {
+        self.sync_config.protocol = if i == 1 { "s3" } else { "webdav" }.into();
+        let _ = crate::sync::save_config(&crate::store::Store::root_dir(), &self.sync_config);
+        cx.notify();
+    }
+
+    pub(crate) fn set_sync_auto(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.sync_config.auto = on;
+        let _ = crate::sync::save_config(&crate::store::Store::root_dir(), &self.sync_config);
+        cx.notify();
+    }
+
+    fn sync_form(&self, cx: &mut Context<Self>) -> crate::sync::Config {
+        let mut c = self.sync_config.clone();
+        c.webdav_url = self.sync_dav_url_field.read(cx).text.trim().to_string();
+        c.webdav_user = self.sync_dav_user_field.read(cx).text.trim().to_string();
+        c.webdav_password = self.sync_dav_password_field.read(cx).text.clone();
+        c.s3_endpoint = self.sync_s3_endpoint_field.read(cx).text.trim().to_string();
+        c.s3_region = self.sync_s3_region_field.read(cx).text.trim().to_string();
+        c.s3_bucket = self.sync_s3_bucket_field.read(cx).text.trim().to_string();
+        c.s3_prefix = self.sync_s3_prefix_field.read(cx).text.trim().trim_matches('/').to_string();
+        c.s3_access_key = self.sync_s3_access_field.read(cx).text.trim().to_string();
+        c.s3_secret_key = self.sync_s3_secret_field.read(cx).text.trim().to_string();
+        c
+    }
+
+    pub(crate) fn save_sync_settings(&mut self, cx: &mut Context<Self>) {
+        let cfg = self.sync_form(cx);
+        if let Err(e) = crate::sync::save_config(&crate::store::Store::root_dir(), &cfg) {
+            return self.show_toast_kind(ui::ToastKind::Error, &format!("{}{e}", tr("设置保存失败：", "Could not save settings: ")), cx);
+        }
+        self.sync_config = cfg;
+        self.show_toast(tr("同步设置已保存", "Sync settings saved"), cx);
+    }
+
+    pub(crate) fn sync_now(&mut self, direction: crate::sync::Direction, window: &mut Window, cx: &mut Context<Self>) {
+        if self.sync_running || crate::sync::busy() {
+            return self.show_toast_kind(ui::ToastKind::Info, tr("正在同步…", "Syncing…"), cx);
+        }
+        let cfg = self.sync_form(cx);
+        if let Err(e) = cfg.validate() {
+            return self.show_toast_kind(ui::ToastKind::Error, &e.to_string(), cx);
+        }
+        if !self.flush_all(cx) {
+            self.confirm = Some(crate::app::Confirm::SaveFailed);
+            cx.notify();
+            return;
+        }
+        let Some(guard) = crate::sync::begin() else {
+            return self.show_toast_kind(ui::ToastKind::Info, tr("正在同步…", "Syncing…"), cx);
+        };
+        let _ = crate::sync::save_config(&crate::store::Store::root_dir(), &cfg);
+        self.sync_config = cfg.clone();
+        self.sync_running = true;
+        self.sync_status = Some(tr("正在同步…", "Syncing…").into());
+        cx.notify();
+        let root = crate::store::Store::root_dir();
+        let current = self.current.clone();
+        cx.spawn_in(window, async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { crate::sync::run(&root, &cfg, direction) }).await;
+            drop(guard);
+            let _ = this.update_in(cx, |w, window, cx| {
+                w.sync_running = false;
+                match result {
+                    Ok(r) => {
+                        let msg = crate::localized_format!("同步完成：上传 {}，下载 {}，冲突 {}。", "Sync complete: {} uploaded, {} downloaded, {} conflicts.", r.uploaded, r.downloaded, r.conflicts);
+                        w.sync_config.last_sync = crate::time::now();
+                        w.sync_config.last_status = msg.clone();
+                        let _ = crate::sync::save_config(&crate::store::Store::root_dir(), &w.sync_config);
+                        w.entries = w.store.list();
+                        w.sort();
+                        if r.downloaded > 0 && w.view == crate::app::View::Doc && !w.unsaved
+                            && let Some(id) = current.as_deref() {
+                            w.open(id, window, cx);
+                        }
+                        w.sync_status = Some(msg.as_str().into());
+                        w.show_toast(&msg, cx);
+                    }
+                    Err(e) => {
+                        let msg = crate::localized_format!("同步失败：{}", "Sync failed: {}", crate::settings::diagnostic(&e.to_string()));
+                        w.sync_config.last_status = msg.clone();
+                        let _ = crate::sync::save_config(&crate::store::Store::root_dir(), &w.sync_config);
+                        w.sync_status = Some(msg.as_str().into());
+                        w.show_toast_kind(ui::ToastKind::Error, &msg, cx);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn auto_sync(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.sync_config.auto || self.sync_running || crate::sync::busy() { return }
+        let cfg = self.sync_form(cx);
+        if cfg.validate().is_err() || !self.flush_all(cx) { return }
+        let Some(guard) = crate::sync::begin() else { return };
+        let _ = crate::sync::save_config(&crate::store::Store::root_dir(), &cfg);
+        self.sync_config = cfg.clone();
+        self.sync_running = true;
+        self.sync_status = Some(tr("正在同步…", "Syncing…").into());
+        cx.notify();
+        let root = crate::store::Store::root_dir();
+        let current = self.current.clone();
+        cx.spawn_in(window, async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { crate::sync::run(&root, &cfg, crate::sync::Direction::Both) }).await;
+            drop(guard);
+            let _ = this.update_in(cx, |w, window, cx| {
+                w.sync_running = false;
+                match result {
+                    Ok(r) => {
+                        let msg = crate::localized_format!("自动同步完成：上传 {}，下载 {}，冲突 {}。", "Automatic sync: {} uploaded, {} downloaded, {} conflicts.", r.uploaded, r.downloaded, r.conflicts);
+                        w.sync_config.last_sync = crate::time::now();
+                        w.sync_config.last_status = msg.clone();
+                        w.entries = w.store.list();
+                        w.sort();
+                        if r.downloaded > 0 && w.view == crate::app::View::Doc && !w.unsaved
+                            && let Some(id) = current.as_deref() {
+                            w.open(id, window, cx);
+                        }
+                        w.sync_status = Some(msg.as_str().into());
+                        cx.notify();
+                    }
+                    Err(e) => {
+                        let msg = crate::localized_format!("自动同步失败：{}", "Automatic sync failed: {}", crate::settings::diagnostic(&e.to_string()));
+                        w.sync_config.last_status = msg.clone();
+                        w.sync_status = Some(msg.as_str().into());
+                        cx.notify();
+                    }
+                }
+                let _ = crate::sync::save_config(&crate::store::Store::root_dir(), &w.sync_config);
+            });
+        })
+        .detach();
+    }
+
+    pub(crate) fn start_auto_sync(&self, window: &Window, cx: &mut Context<Self>) {
+        let Some(handle) = window.window_handle().downcast::<Workspace>() else { return };
+        cx.spawn(async move |_, cx| loop {
+            cx.background_executor().timer(std::time::Duration::from_secs(60)).await;
+            if !crate::sync::auto_due() { continue }
+            if handle.update(cx, |w, window, cx| {
+                if w.sync_config.auto && !w.sync_running && !crate::sync::busy() { w.auto_sync(window, cx); }
+            }).is_err() { break }
+        })
+        .detach();
     }
 
     /// 版本历史: the retention count is stored in the library, so every

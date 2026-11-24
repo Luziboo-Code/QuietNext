@@ -362,6 +362,19 @@ pub struct Workspace {
     pub ai_base_field: Entity<TextField>,
     pub ai_model_field: Entity<TextField>,
     pub ai_key_field: Entity<TextField>,
+    /// 设置 › 同步: the saved configuration and its form fields.
+    pub sync_config: crate::sync::Config,
+    pub sync_running: bool,
+    pub sync_status: Option<SharedString>,
+    pub sync_dav_url_field: Entity<TextField>,
+    pub sync_dav_user_field: Entity<TextField>,
+    pub sync_dav_password_field: Entity<TextField>,
+    pub sync_s3_endpoint_field: Entity<TextField>,
+    pub sync_s3_region_field: Entity<TextField>,
+    pub sync_s3_bucket_field: Entity<TextField>,
+    pub sync_s3_prefix_field: Entity<TextField>,
+    pub sync_s3_access_field: Entity<TextField>,
+    pub sync_s3_secret_field: Entity<TextField>,
     /// 设置 › 模板: the template being edited (index into `prefs().templates`),
     /// its name and its body.
     pub template_index: Option<usize>,
@@ -695,6 +708,27 @@ impl Workspace {
             f.set_text(&crate::review::ai_key(), cx);
             f
         });
+        let sync_config = crate::sync::config(&crate::store::Store::root_dir());
+        fn sync_field(cx: &mut Context<Workspace>, placeholder: &str, value: &str) -> Entity<TextField> {
+            let value = value.to_string();
+            cx.new(|cx| {
+                let mut f = TextField::new(placeholder, cx);
+                f.size = 12.;
+                f.line_height = 18.;
+                f.set_text(&value, cx);
+                f
+            })
+        }
+        let sync_dav_url_field = sync_field(cx, "https://dav.example.com/QuietNext", &sync_config.webdav_url);
+        let sync_dav_user_field = sync_field(cx, crate::settings::tr("用户名", "Username"), &sync_config.webdav_user);
+        let sync_dav_password_field = sync_field(cx, crate::settings::tr("密码", "Password"), &sync_config.webdav_password);
+        let sync_s3_endpoint_field = sync_field(cx, "https://s3.us-east-1.amazonaws.com", &sync_config.s3_endpoint);
+        let sync_s3_region_field = sync_field(cx, "us-east-1", &sync_config.s3_region);
+        let sync_s3_bucket_field = sync_field(cx, crate::settings::tr("存储桶", "Bucket"), &sync_config.s3_bucket);
+        let sync_s3_prefix_field = sync_field(cx, crate::settings::tr("前缀（可选）", "Prefix (optional)"), &sync_config.s3_prefix);
+        let sync_s3_access_field = sync_field(cx, "Access Key", &sync_config.s3_access_key);
+        let sync_s3_secret_field = sync_field(cx, "Secret Key", &sync_config.s3_secret_key);
+        let sync_status = (!sync_config.last_status.is_empty()).then(|| SharedString::from(sync_config.last_status.clone()));
         let template_name_field = cx.new(|cx| {
             let mut f = TextField::new(crate::settings::tr("模板名称", "Template name"), cx);
             f.size = 13.;
@@ -842,6 +876,18 @@ impl Workspace {
             ai_base_field,
             ai_model_field,
             ai_key_field,
+            sync_config,
+            sync_running: false,
+            sync_status,
+            sync_dav_url_field,
+            sync_dav_user_field,
+            sync_dav_password_field,
+            sync_s3_endpoint_field,
+            sync_s3_region_field,
+            sync_s3_bucket_field,
+            sync_s3_prefix_field,
+            sync_s3_access_field,
+            sync_s3_secret_field,
             template_index: None,
             template_name_field,
             template_body_field,
@@ -916,6 +962,7 @@ impl Workspace {
         };
         ws.sort();
         ws.load_home();
+        if !cfg!(target_family = "wasm") { ws.start_auto_sync(window, cx); }
         // An empty library opens on 主页's empty state; only a quick note
         // window starts a document of its own. The main window returns to the
         // document read last (#234), or the home page when that is set; the
@@ -957,6 +1004,7 @@ impl Workspace {
         if let Some(v) = std::env::var_os("QUIET_MD_SETTINGS") {
             let page = match v.to_string_lossy().as_ref() {
                 "review" => crate::settings::Page::Review,
+                "sync" => crate::settings::Page::Sync,
                 "appearance" => crate::settings::Page::Appearance,
                 "templates" => crate::settings::Page::Templates,
                 "about" => crate::settings::Page::About,
