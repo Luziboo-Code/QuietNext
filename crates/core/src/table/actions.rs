@@ -247,6 +247,7 @@ impl Doc {
         let mut opts = ViewOpts { frozen: 1, ..Default::default() };
         match kind {
             ViewKind::Kanban => opts.stack = t.fields.iter().find(|f| f.ty == FieldType::SingleSelect).map(|f| f.id),
+            ViewKind::Gallery => opts.cover = t.fields.iter().find(|f| f.ty == FieldType::Attachment).map(|f| f.id),
             ViewKind::Calendar | ViewKind::Gantt => {
                 let mut dates = t.fields.iter().filter(|f| f.ty == FieldType::Date).map(|f| f.id);
                 opts.date = dates.next();

@@ -18,7 +18,7 @@ use crate::feishu_theme::{c, ud};
 use crate::ui::{popover, ui_text};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Kind { Fields, Filter, Group, Sort, RowHeight, Color }
+pub(crate) enum Kind { Fields, Filter, Group, Sort, RowHeight, Color, View }
 
 pub(crate) struct Panel {
     pub kind: Kind,
@@ -60,13 +60,14 @@ pub(crate) fn open(v: &mut TableView, kind: Kind, pos: Point<Pixels>, window: &m
     sync_inputs(v, window, cx);
 }
 
-pub(crate) fn render(_v: &TableView, _base: &Base, t: &Table, view: &View, panel: &Panel, cx: &Context<TableView>) -> AnyElement {
+pub(crate) fn render(v: &TableView, _base: &Base, t: &Table, view: &View, panel: &Panel, cx: &Context<TableView>) -> AnyElement {
     match panel.kind {
         Kind::Fields => field_list(t, view, panel, cx),
         Kind::Filter => filter_panel(t, view, panel, cx),
         Kind::Group | Kind::Sort => order_panel(t, view, panel.kind, cx),
         Kind::RowHeight => height_panel(view, cx),
         Kind::Color => color_panel(t, view, panel, cx),
+        Kind::View => view_panel(v, t, view, cx),
     }
 }
 
@@ -180,7 +181,11 @@ fn below(ev: &ClickEvent) -> Point<Pixels> { let p = ev.position(); point(p.x - 
 
 /// The table's fields but `skip`, `cur` ticked.
 fn pick_field(v: &mut TableView, pos: Point<Pixels>, cur: Option<FieldId>, skip: Vec<FieldId>, cx: &mut Context<TableView>, pick: impl Fn(&mut TableView, FieldId, &mut Window, &mut Context<TableView>) + 'static) {
-    let Some(list) = peek(v, cx, |t, view| t.ordered_fields(view).into_iter().filter(|f| !skip.contains(&f.id)).map(|f| (f.id, f.name.clone(), f.ty)).collect::<Vec<_>>()) else { return };
+    pick_field_where(v, pos, cur, &skip, |_| true, cx, pick);
+}
+
+fn pick_field_where(v: &mut TableView, pos: Point<Pixels>, cur: Option<FieldId>, skip: &[FieldId], allow: fn(FieldType) -> bool, cx: &mut Context<TableView>, pick: impl Fn(&mut TableView, FieldId, &mut Window, &mut Context<TableView>) + 'static) {
+    let Some(list) = peek(v, cx, |t, view| t.ordered_fields(view).into_iter().filter(|f| !skip.contains(&f.id) && allow(f.ty)).map(|f| (f.id, f.name.clone(), f.ty)).collect::<Vec<_>>()) else { return };
     if list.is_empty() { return; }
     let items = list.iter().map(|(id, name, ty)| DropItem::new(name.clone()).glyph(field_glyph(*ty)).on(Some(*id) == cur)).collect();
     v.open_dropdown(pos, 212., items, move |v, k, window, cx| if let Some((id, ..)) = list.get(k) { pick(v, *id, window, cx) }, cx);
@@ -443,6 +448,66 @@ fn order_panel(t: &Table, view: &View, kind: Kind, cx: &Context<TableView>) -> A
         }));
         p = p.child(div().flex_none().h(px(1.)).bg(Theme::line_divider()))
             .child(div().flex().items_center().gap(px(4.)).child(fold("tb-po-fold", "全部折叠", true)).child(fold("tb-po-unfold", "全部展开", false)));
+    }
+    p.into_any_element()
+}
+
+// ---- 视图设置 ----
+
+#[derive(Clone, Copy)]
+enum ViewSlot { Stack, Cover, Date, End }
+
+fn set_slot(view: &mut View, slot: ViewSlot, id: Option<FieldId>) {
+    match slot {
+        ViewSlot::Stack => view.opts.stack = id,
+        ViewSlot::Cover => view.opts.cover = id,
+        ViewSlot::Date => view.opts.date = id,
+        ViewSlot::End => view.opts.end = id,
+    }
+}
+
+fn slot_value(view: &View, slot: ViewSlot) -> Option<FieldId> {
+    match slot { ViewSlot::Stack => view.opts.stack, ViewSlot::Cover => view.opts.cover, ViewSlot::Date => view.opts.date, ViewSlot::End => view.opts.end }
+}
+
+fn view_field_row(_v: &TableView, t: &Table, view: &View, title: &'static str, slot: ViewSlot, allow: fn(FieldType) -> bool, cx: &Context<TableView>) -> AnyElement {
+    let cur = slot_value(view, slot);
+    let (id, del) = match slot {
+        ViewSlot::Stack => ("tb-pv-stack", "tb-pv-stack-x"),
+        ViewSlot::Cover => ("tb-pv-cover", "tb-pv-cover-x"),
+        ViewSlot::Date => ("tb-pv-date", "tb-pv-date-x"),
+        ViewSlot::End => ("tb-pv-end", "tb-pv-end-x"),
+    };
+    let pick = pick_box(id, field_body(cur.and_then(|id| t.field(id)))).on_click(cx.listener(move |v, ev: &ClickEvent, _, cx| {
+        pick_field_where(v, below(ev), cur, &[], allow, cx, move |v, fid, _, cx| v.edit_view(cx, |view| set_slot(view, slot, Some(fid))));
+    }));
+    div().flex().items_center().gap(px(10.))
+        .child(div().w(px(92.)).flex_none().text_size(px(12.)).text_color(Theme::text_caption()).child(label(title)))
+        .child(div().flex_1().min_w_0().child(pick))
+        .when(cur.is_some(), |d| d.child(x_btn(del).on_click(cx.listener(move |v, _, _, cx| {
+            let (t, id) = (v.table, v.view);
+            v.edit(cx, |doc| doc.edit_view(t, id, |view| set_slot(view, slot, None)));
+        }))))
+        .into_any_element()
+}
+
+fn view_panel(v: &TableView, t: &Table, view: &View, cx: &Context<TableView>) -> AnyElement {
+    let mut p = shell("tb-panel-view", 360., cx).p(px(16.)).gap(px(10.)).child(title("视图设置"))
+        .child(div().flex().items_center().gap(px(10.))
+            .child(div().w(px(92.)).flex_none().text_size(px(12.)).text_color(Theme::text_caption()).child(label("视图类型")))
+            .child(div().text_size(px(TEXT)).child(label(view.kind.label()))));
+    match view.kind {
+        ViewKind::Kanban => {
+            p = p.child(view_field_row(v, t, view, "分组字段", ViewSlot::Stack, |ty| matches!(ty, FieldType::SingleSelect | FieldType::Person), cx));
+            p = p.child(view_field_row(v, t, view, "封面字段", ViewSlot::Cover, |ty| ty == FieldType::Attachment, cx));
+        }
+        ViewKind::Gallery => p = p.child(view_field_row(v, t, view, "封面字段", ViewSlot::Cover, |ty| ty == FieldType::Attachment, cx)),
+        ViewKind::Gantt => {
+            p = p.child(view_field_row(v, t, view, "开始日期", ViewSlot::Date, |ty| ty.is_date(), cx));
+            p = p.child(view_field_row(v, t, view, "结束日期", ViewSlot::End, |ty| ty.is_date(), cx));
+        }
+        ViewKind::Calendar => p = p.child(view_field_row(v, t, view, "日期字段", ViewSlot::Date, |ty| ty.is_date(), cx)),
+        _ => p = p.child(div().text_size(px(TEXT)).text_color(Theme::text_caption()).child(label("此视图没有额外设置"))),
     }
     p.into_any_element()
 }

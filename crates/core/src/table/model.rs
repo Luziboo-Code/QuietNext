@@ -299,15 +299,15 @@ impl RowHeight {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 /// A file's old 画册 view reads back as 表格 (an unknown kind is the default).
-pub enum ViewKind { #[default] Grid, Kanban, Calendar, Gantt, Form }
+pub enum ViewKind { #[default] Grid, Kanban, Gallery, Calendar, Gantt, Form }
 
 impl ViewKind {
-    pub const ALL: &'static [ViewKind] = &[ViewKind::Grid, ViewKind::Kanban, ViewKind::Calendar, ViewKind::Gantt, ViewKind::Form];
+    pub const ALL: &'static [ViewKind] = &[ViewKind::Grid, ViewKind::Kanban, ViewKind::Gallery, ViewKind::Calendar, ViewKind::Gantt, ViewKind::Form];
     pub fn label(self) -> &'static str {
-        match self { ViewKind::Grid => "表格视图", ViewKind::Kanban => "看板视图", ViewKind::Calendar => "日历视图", ViewKind::Gantt => "甘特视图", ViewKind::Form => "表单视图" }
+        match self { ViewKind::Grid => "表格视图", ViewKind::Kanban => "看板视图", ViewKind::Gallery => "画廊视图", ViewKind::Calendar => "日历视图", ViewKind::Gantt => "甘特视图", ViewKind::Form => "表单视图" }
     }
     pub fn short(self) -> &'static str {
-        match self { ViewKind::Grid => "表格", ViewKind::Kanban => "看板", ViewKind::Calendar => "日历", ViewKind::Gantt => "甘特图", ViewKind::Form => "表单" }
+        match self { ViewKind::Grid => "表格", ViewKind::Kanban => "看板", ViewKind::Gallery => "画廊", ViewKind::Calendar => "日历", ViewKind::Gantt => "甘特图", ViewKind::Form => "表单" }
     }
 }
 

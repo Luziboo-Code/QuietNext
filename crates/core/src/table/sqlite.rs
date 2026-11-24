@@ -680,6 +680,7 @@ mod tests {
             grid(&mut b, "全部", ViewKind::Grid, ViewOpts { frozen: 1, ..Default::default() }),
             grid(&mut b, "在读", ViewKind::Grid, busy),
             grid(&mut b, "看板", ViewKind::Kanban, ViewOpts { stack: Some(state.id), cover: Some(cover.id), ..Default::default() }),
+            grid(&mut b, "画廊", ViewKind::Gallery, ViewOpts { cover: Some(cover.id), ..Default::default() }),
             grid(&mut b, "日历", ViewKind::Calendar, ViewOpts { date: Some(start.id), ..Default::default() }),
             grid(&mut b, "甘特", ViewKind::Gantt, ViewOpts { date: Some(start.id), end: Some(start.id), ..Default::default() }),
             grid(&mut b, "表单", ViewKind::Form, ViewOpts::default()),

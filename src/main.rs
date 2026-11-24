@@ -2,9 +2,8 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 pub(crate) const APP_ID: &str = "com.s1dashu.quietmd";
-/// 数据表 can be made and edited (feature `datatable`). Off, nothing offers one and
-/// one already in the library shows as a read-only placeholder, its file untouched.
-pub(crate) const DATATABLE: bool = cfg!(feature = "datatable");
+/// 数据表 can be made and edited, with 表格 / 看板 / 画廊 / 甘特 views.
+pub(crate) const DATATABLE: bool = true;
 
 mod app;
 #[cfg(unix)]

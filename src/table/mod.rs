@@ -15,13 +15,16 @@
 pub mod style;
 
 mod cell;
+mod board;
 mod editors;
 mod fields;
+mod gallery;
 mod grid;
 mod keys;
 mod menus;
 mod panels;
 mod record;
+mod timeline;
 
 pub use fdl_core::table::*;
 
@@ -190,6 +193,8 @@ pub(crate) enum Popup {
     Links { rec: RecId, field: FieldId },
     Files { rec: RecId, field: FieldId },
     Panel(panels::Panel),
+    /// The list of a table's views and the kinds a new one can be.
+    Views,
     /// The view list under a table-in-a-page's view name.
     Stat(FieldId),
     More,
@@ -333,6 +338,29 @@ impl TableView {
         let base = &self.state.read(cx).doc.base;
         let t = base.table(self.table);
         (t.map(|t| t.name.clone()), t.and_then(|t| t.view(self.view)).map(|v| v.name.clone()))
+    }
+
+    /// Show another view of this table (the block remembers it through `Shown`).
+    pub(crate) fn show_view(&mut self, id: ViewId, window: &mut Window, cx: &mut Context<Self>) {
+        if self.view == id { return }
+        self.view = id;
+        self.result_key = (u64::MAX, 0, 0, 0);
+        self.clear_selection();
+        self.sync_now(cx);
+        self.close_popup(window, cx);
+        cx.emit(TableEvent::Shown);
+    }
+
+    /// Add a view of `kind`, show it, and remember it in the block.
+    pub(crate) fn create_view(&mut self, kind: ViewKind, window: &mut Window, cx: &mut Context<Self>) {
+        let tid = self.table;
+        let Some(id) = self.edit(cx, |d| d.add_view(tid, kind, "")) else { return };
+        self.view = id;
+        self.result_key = (u64::MAX, 0, 0, 0);
+        self.clear_selection();
+        self.sync_now(cx);
+        self.close_popup(window, cx);
+        cx.emit(TableEvent::Shown);
     }
 
     /// Run an edit on the document (one undo step per `Doc` call inside `f`).
@@ -558,8 +586,14 @@ impl Render for TableView {
             let rows = self.tops.last().copied().unwrap_or(0.) + ADD_ROW_H;
             self.scroll.y = self.scroll.y.min((rows - rows.min(INLINE_MAX_ROWS_H)).max(0.));
         }
-        // one view, a 表格 (a file's old 看板 or other kinds show as one too)
-        let main = grid::render(self, base, t, v, window, cx);
+        // The view the block or bar chose.
+        let main = match v.kind {
+            ViewKind::Grid => grid::render(self, base, t, v, window, cx),
+            ViewKind::Kanban => board::render(self, base, t, v, window, cx),
+            ViewKind::Gallery => gallery::render(self, base, t, v, window, cx),
+            ViewKind::Gantt | ViewKind::Calendar => timeline::render(self, base, t, v, window, cx),
+            ViewKind::Form => grid::render(self, base, t, v, window, cx),
+        };
         let side = self.expanded.and_then(|r| t.record(r)).map(|r| record::render(self, base, t, v, r, window, cx));
         let body = div().flex_1().min_h_0().flex()
             .child(div().relative().flex_1().min_w_0().h_full().flex().flex_col().child(main).children(menus::find_bar(self, cx)).children(menus::selection_bar(self, t, cx)))

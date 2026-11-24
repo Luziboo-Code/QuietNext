@@ -9,6 +9,23 @@ use crate::ui::{popover, ui_text, TipExt};
 
 fn label(s: &str) -> String { crate::settings::label(s) }
 
+/// The glyph for a view kind.
+fn view_glyph(kind: ViewKind) -> &'static str {
+    match kind { ViewKind::Grid => "table", ViewKind::Kanban => "columns-2", ViewKind::Gallery => "view-card", ViewKind::Calendar => "calendar", ViewKind::Gantt => "timer", ViewKind::Form => "file-text" }
+}
+
+/// The current view's name, which opens the view list and the new-view choices.
+fn view_switch(_v: &TableView, view: &View, cx: &Context<TableView>) -> Stateful<Div> {
+    div().id("tb-view-switch").h(px(28.)).px(px(8.)).flex().items_center().gap(px(6.)).rounded(px(6.)).cursor_pointer().hover(|s| s.bg(Theme::fill_hover()))
+        .child(icon(view_glyph(view.kind), 15., Theme::icon()))
+        .child(div().max_w(px(150.)).overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(TEXT)).font_weight(FontWeight::MEDIUM).child(label(&view.name)))
+        .child(icon("chevron-down", 11., Theme::text_caption()))
+        .on_click(cx.listener(|v, ev: &ClickEvent, _, cx| {
+            let p = ev.position();
+            v.open_popup(point(p.x, p.y + px(18.)), Popup::Views, cx);
+        }))
+}
+
 /// The tools of a view as icons (a set one blue with its count), each with its tip:
 /// 添加记录 when `add`, then 字段配置, 筛选, 分组, 排序, 行高 and 填色.
 fn tool_icons(t: &Table, view: &View, add: bool, cx: &Context<TableView>) -> Div {
@@ -19,6 +36,7 @@ fn tool_icons(t: &Table, view: &View, add: bool, cx: &Context<TableView>) -> Div
         ("tb-t-group", "view-list", "分组", o.groups.len(), panels::Kind::Group), ("tb-t-sort", "sort-down", "排序", o.sorts.len(), panels::Kind::Sort)];
     tools.push(("tb-t-height", "list", "行高", 0, panels::Kind::RowHeight));
     tools.push(("tb-t-color", "palette", "填色", o.colors.len(), panels::Kind::Color));
+    if view.kind != ViewKind::Grid { tools.insert(0, ("tb-t-view", "view-settings", "视图设置", 0, panels::Kind::View)); }
     let mut row = div().flex_none().flex().items_center().gap(px(4.))
         .when(add, |d| d.child(icon_button("tb-add", "plus", false).tip_above(crate::settings::text("添加记录"), None).on_click(cx.listener(|v, _, window, cx| v.add_record(None, window, cx)))));
     for (id, glyph, tip, n, kind) in tools {
@@ -50,7 +68,11 @@ pub(crate) fn bar(v: &TableView, t: &Table, view: &View, cx: &Context<TableView>
         .child(icon_button("tb-more", "ellipsis", false).on_click(cx.listener(|v, ev: &ClickEvent, _, cx| { let p = ev.position(); v.open_popup(point(p.x - px(160.), p.y + px(18.)), Popup::More, cx); })))
         .when(!v.standalone, |d| d.child(icon_button("tb-collapse", "x", false).tip_above(crate::settings::text("退出全屏"), None).on_click(cx.listener(|_, _, _, cx| cx.emit(TableEvent::Close)))));
     div().id("tb-bar").flex_none().h(px(BAR_H)).flex().items_center().justify_between().gap(px(8.)).px(px(12.)).border_b_1().border_color(line())
-        .child(tool_icons(t, view, true, cx)).child(right)
+        .child(div().flex().items_center().gap(px(8.))
+            .child(view_switch(v, view, cx))
+            .child(div().flex_none().w(px(1.)).h(px(16.)).bg(line()))
+            .child(tool_icons(t, view, true, cx)))
+        .child(right)
         .into_any_element()
 }
 
@@ -72,7 +94,8 @@ pub(crate) fn inline_header(v: &TableView, t: &Table, view: &View, cx: &Context<
         .when(own && !renaming, |d| d.child(div().id("tb-in-rename").flex_none().size(px(24.)).rounded(px(4.)).flex().items_center().justify_center().cursor_pointer()
             .invisible().group_hover("tb-in-name", |s| s.visible()).hover(|s| s.bg(Theme::fill_hover()))
             .child(icon("pen-line", 14., Theme::text_caption())).tip_above(crate::settings::text("重命名"), None)
-            .on_click(cx.listener(move |v, _, window, cx| v.begin_rename(Rename::Table(tid), window, cx)))));
+            .on_click(cx.listener(move |v, _, window, cx| v.begin_rename(Rename::Table(tid), window, cx)))))
+        .child(view_switch(v, view, cx));
     let open = v.popup.is_some();
     let right = div().flex_none().flex().items_center().gap(px(4.)).when(!open, |d| d.invisible().group_hover("tb-block", |s| s.visible()))
         .child(tool_icons(t, view, false, cx))
@@ -181,6 +204,7 @@ pub(crate) fn popup(v: &TableView, base: &Base, t: &Table, view: &View, _window:
         Popup::Links { rec, field } => editors::links_popup(v, base, t, *rec, *field, cx),
         Popup::Files { rec, field } => editors::files_popup(v, t, *rec, *field, cx),
         Popup::Panel(panel) => panels::render(v, base, t, view, panel, cx),
+        Popup::Views => views_menu(v, t, view, cx),
         Popup::Stat(f) => stat_menu(t, view, *f, cx),
         Popup::More => more_menu(cx),
     };
@@ -289,6 +313,23 @@ fn stat_menu(t: &Table, view: &View, fid: FieldId, cx: &Context<TableView>) -> A
         .on_click(cx.listener(move |v, _, window, cx| { v.edit_view(cx, |view| { match stat { Some(s) => { view.opts.stats.insert(fid, s); } None => { view.opts.stats.remove(&fid); } } }); v.close_popup(window, cx); }));
     let mut m = shell("tb-stat-menu", 180., cx).child(row(0, label("不展示"), cur.is_none(), None));
     for (i, s) in query::stats_for(f.ty).iter().enumerate() { m = m.child(row(i + 1, label(s.label()), cur == Some(*s), Some(*s))); }
+    m.into_any_element()
+}
+
+fn views_menu(_v: &TableView, t: &Table, view: &View, cx: &Context<TableView>) -> AnyElement {
+    let mut m = shell("tb-view-menu", 236., cx);
+    m = m.child(div().px(px(12.)).pt(px(8.)).pb(px(4.)).text_size(px(11.)).text_color(Theme::text_caption()).child(label("切换视图")));
+    for vv in &t.views {
+        let id = vv.id;
+        m = m.child(menu_item(("tb-view-row", id), view_glyph(vv.kind), vv.name.clone(), false)
+            .when(vv.id == view.id, |d| d.child(icon("check", 14., Theme::primary())))
+            .on_click(cx.listener(move |v, _, window, cx| v.show_view(id, window, cx))));
+    }
+    m = m.child(menu_rule()).child(div().px(px(12.)).pt(px(4.)).pb(px(4.)).text_size(px(11.)).text_color(Theme::text_caption()).child(label("新建视图")));
+    for kind in [ViewKind::Grid, ViewKind::Kanban, ViewKind::Gallery, ViewKind::Gantt] {
+        m = m.child(menu_item(("tb-view-new", kind as usize), view_glyph(kind), label(kind.label()), false)
+            .on_click(cx.listener(move |v, _, window, cx| v.create_view(kind, window, cx))));
+    }
     m.into_any_element()
 }
 
