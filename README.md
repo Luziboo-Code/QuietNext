@@ -144,6 +144,7 @@ Thanks to everyone who has helped build Quiet.md. Issues and pull requests are w
 
 ## Recent updates
 
+- **0.1.16** (Nov 24): Sync the whole library and its `.quiet` settings to WebDAV or S3-compatible storage. Upload, download, sync both ways, or sync automatically every five minutes.
 - **0.1.15** (Nov 23): A new Q app icon. Lock editing now has a shortcut (⌘⇧K on macOS, Ctrl+Shift+K on Windows). Export as image captures the whole page, with its side margins.
 - **0.1.14** (Nov 21): find and replace with regular expressions. Obsidian `[[wikilinks]]` open the note they point to. A Turkish interface, and Arabic laid out right to left. Choose the interface and document fonts, and clear out images and files no note uses. Search keeps up with large libraries, and deleting many notes is quicker. A setting for whether Backspace returns to the title; on Windows and Linux, Copy as Markdown is now Ctrl+Shift+M. Split view puts two notes side by side in one window. Templates: write your own and insert one with ⌥⌘P.
 - **0.1.13** (Nov 17): boards — a whiteboard ported from Excalidraw, as a block in a note or a standalone `.excalidraw` file, fast with 10,000 shapes. Version history for every note (… › Version history). French and Arabic interfaces. Copy as Markdown, copy a file's path, and switch the library folder in Settings. Pasted web images are saved into the library. Less memory on picture-heavy pages and smoother sidebar scrolling.

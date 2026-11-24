@@ -17,6 +17,11 @@ const REAL_FOLDERS: &str = "文档库改为真实文件夹，以标题命名，�
 /// Each version's notes: (version, [(中文, English)]). Only the running
 /// version's are shown; a version without notes shows nothing.
 const NOTES: &[(&str, &[(&str, &str)])] = &[
+    ("0.1.16", &[
+        ("新增同步：把整个文档库和 .quiet 配置同步到 WebDAV 或 S3 兼容存储", "New sync: mirror the whole library and its .quiet settings to WebDAV or S3-compatible storage"),
+        ("支持同步到云端、从云端下载、立即双向同步，以及每五分钟自动同步", "Upload, download, sync both ways now, or sync automatically every five minutes"),
+        ("冲突时保留云端副本，下载覆盖前备份到本机；账号和密钥只保存在本机", "Conflicting cloud copies are kept, local files are backed up before download, and credentials stay on this computer"),
+    ]),
     ("0.1.15", &[
         ("应用图标更新为全新的 Q 图标", "A new Q app icon"),
         ("锁定编辑支持快捷键（设置 › 快捷键；macOS ⌘⇧K，Windows Ctrl+Shift+K）", "Lock editing has a shortcut (Settings › Shortcuts; ⌘⇧K on macOS, Ctrl+Shift+K on Windows)"),

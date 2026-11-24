@@ -142,6 +142,7 @@ Gracias a todas las personas que han ayudado a construir Quiet.md. Los issues y 
 
 ## Novedades recientes
 
+- **0.1.16** (24 nov.): sincroniza toda la biblioteca y sus ajustes `.quiet` con WebDAV o almacenamiento compatible con S3. Sube, descarga, sincroniza en ambos sentidos o automáticamente cada cinco minutos.
 - **0.1.15** (23 nov.): nuevo icono Q. Bloquear la edición tiene atajo (⌘⇧K en macOS, Ctrl+Shift+K en Windows). La exportación como imagen captura la página completa, con sus márgenes.
 - **0.1.14** (21 nov): buscar y reemplazar con expresiones regulares. Los `[[enlaces wiki]]` de Obsidian abren la nota a la que apuntan. Interfaz en turco, y el árabe se muestra de derecha a izquierda. Elige la fuente de la interfaz y la de los documentos, y retira las imágenes y archivos que ninguna nota usa. La búsqueda sigue el ritmo en bibliotecas grandes y borrar muchas notas es más rápido. Un ajuste para que Retroceso vuelva al título; en Windows y Linux, Copiar como Markdown pasa a ser Ctrl+Shift+M.
 - **0.1.13** (17 nov): pizarras, portadas de Excalidraw, como bloque en una nota o como archivo `.excalidraw`, fluidas incluso con 10.000 formas. Historial de versiones en cada nota (… › Historial de versiones). Interfaz en francés y árabe. Copiar como Markdown, copiar la ruta de un archivo y cambiar la carpeta de la biblioteca en Ajustes. Las imágenes pegadas desde la web se guardan en la biblioteca. Menos memoria en páginas con muchas imágenes y desplazamiento más fluido en la barra lateral.
