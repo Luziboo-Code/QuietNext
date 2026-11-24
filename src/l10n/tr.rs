@@ -1133,4 +1133,6 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("点击添加批注", "Yorum eklemek için tıklayın"),
     ("删除选中 {}", "{} öğeyi sil"),
     ("批注保存失败：", "Yorum kaydedilemedi: "),
+    ("管理", "Yönet"),
+    ("完成", "Tamam"),
 ];

@@ -25,6 +25,16 @@ pub struct Comment {
 
 fn path_at(root: &Path, id: &str) -> PathBuf { root.join("comments").join(format!("{id}.json")) }
 
+/// The round check mark used only while the comments panel is managing.
+fn round_check(on: bool) -> Div {
+    let box_ = div().flex_none().size(px(16.)).rounded_full().border_1().flex().items_center().justify_center();
+    if on {
+        box_.bg(Theme::primary()).border_color(Theme::primary()).child(icon("check", 10., gpui::white()))
+    } else {
+        box_.border_color(Theme::line_border())
+    }
+}
+
 fn load_at(root: &Path, id: &str) -> Vec<Comment> {
     std::fs::read(path_at(root, id)).ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
@@ -48,6 +58,7 @@ impl Workspace {
         self.comments_open = !self.comments.is_empty();
         self.comment_editing = None;
         self.comment_selected.clear();
+        self.comment_managing = false;
         self.comment_field.update(cx, |f, cx| f.set_text("", cx));
         cx.notify();
     }
@@ -121,6 +132,12 @@ impl Workspace {
         cx.notify();
     }
 
+    pub(crate) fn toggle_comment_managing(&mut self, cx: &mut Context<Self>) {
+        self.comment_managing = !self.comment_managing;
+        if !self.comment_managing { self.comment_selected.clear(); }
+        cx.notify();
+    }
+
     pub(crate) fn delete_selected_comments(&mut self, cx: &mut Context<Self>) {
         self.finish_comment(cx);
         let selected = std::mem::take(&mut self.comment_selected);
@@ -152,8 +169,8 @@ impl Workspace {
                         .into_any_element()
                 };
                 list = list.child(div().id(("comment", i)).flex().items_start().gap(px(7.)).p(px(8.)).rounded(px(8.)).bg(Theme::fill_hover())
-                    .child(div().id(("comment-check", i)).cursor_pointer().child(ui::checkbox(on))
-                        .on_click(cx.listener(move |w, _, _, cx| w.toggle_comment_selected(&cid, cx))))
+                    .when(self.comment_managing, |d| d.child(div().id(("comment-check", i)).cursor_pointer().child(round_check(on))
+                        .on_click(cx.listener(move |w, _, _, cx| w.toggle_comment_selected(&cid, cx)))))
                     .child(div().flex_1().min_w_0().flex().flex_col().gap(px(5.))
                         .child(div().text_size(px(11.)).line_height(px(16.)).text_color(Theme::text_caption()).line_clamp(3).child(c.quote.clone()))
                         .child(body))
@@ -167,11 +184,18 @@ impl Workspace {
             .child(div().flex().items_center().gap(px(6.))
                 .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).child(crate::settings::tr("批注", "Comments")))
                 .child(div().text_size(px(11.)).text_color(Theme::text_caption()).child(self.comments.len().to_string())))
-            .when(selected > 0, |d| d.child(
-                div().id("comments-delete-selected").cursor_pointer().text_size(px(11.)).text_color(Theme::danger())
-                    .child(crate::localized_format!("删除选中 {}", "Delete {}", selected))
-                    .on_click(cx.listener(|w, _, _, cx| w.delete_selected_comments(cx))),
-            ));
+            .child(div().flex().items_center().gap(px(8.))
+                .child(div().id("comments-manage").h(px(24.)).px(px(8.)).flex().items_center().gap(px(4.)).rounded(px(6.)).cursor_pointer()
+                    .text_size(px(11.)).text_color(if self.comment_managing { Theme::primary() } else { Theme::text_caption() })
+                    .when(self.comment_managing, |d| d.bg(Theme::fill_hover()))
+                    .child(icon("batch", 14., if self.comment_managing { Theme::primary() } else { Theme::icon() }))
+                    .child(crate::settings::tr(if self.comment_managing { "完成" } else { "管理" }, if self.comment_managing { "Done" } else { "Manage" }))
+                    .on_click(cx.listener(|w, _, _, cx| w.toggle_comment_managing(cx))))
+                .when(selected > 0, |d| d.child(
+                    div().id("comments-delete-selected").cursor_pointer().text_size(px(11.)).text_color(Theme::danger())
+                        .child(crate::localized_format!("删除选中 {}", "Delete {}", selected))
+                        .on_click(cx.listener(|w, _, _, cx| w.delete_selected_comments(cx))),
+                )));
         div().w(px(300.)).flex_none().h_full().flex().flex_col().border_l_1().border_color(Theme::line_border()).bg(Theme::bg_body())
             .child(header).child(list).into_any_element()
     }

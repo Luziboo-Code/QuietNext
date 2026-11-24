@@ -142,6 +142,7 @@ Gracias a todas las personas que han ayudado a construir Quiet.md. Los issues y 
 
 ## Novedades recientes
 
+- **0.1.18** (24 nov.): el panel de comentarios añade un botón Gestionar que muestra casillas redondas para seleccionar y borrar varios comentarios a la vez. El icono de comentario de la barra de herramientas ya se muestra correctamente.
 - **0.1.17** (24 nov.): comentarios nuevos. Selecciona texto, usa el botón Comentario de la barra de herramientas y añade, edita o elimina en el panel derecho; también puedes seleccionar varios y borrarlos juntos. Vuelve el menú de barra completa en los documentos Markdown.
 - **0.1.16** (24 nov.): sincroniza toda la biblioteca y sus ajustes `.quiet` con WebDAV o almacenamiento compatible con S3. Sube, descarga, sincroniza en ambos sentidos o automáticamente cada cinco minutos.
 - **0.1.15** (23 nov.): nuevo icono Q. Bloquear la edición tiene atajo (⌘⇧K en macOS, Ctrl+Shift+K en Windows). La exportación como imagen captura la página completa, con sus márgenes.

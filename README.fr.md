@@ -142,6 +142,7 @@ Merci à toutes les personnes qui ont contribué à construire Quiet.md. Issues 
 
 ## Dernières mises à jour
 
+- **0.1.18** (24 nov.) : le panneau des commentaires gagne un bouton Gérer ; il affiche des cases rondes pour sélectionner et supprimer plusieurs commentaires à la fois. L’icône de commentaire de la barre d’outils s’affiche désormais correctement.
 - **0.1.17** (24 nov.) : ajout des commentaires. Sélectionnez du texte, utilisez le bouton Commentaire de la barre d’outils, puis ajoutez, modifiez ou supprimez dans le panneau de droite ; plusieurs commentaires peuvent être supprimés ensemble. Le menu slash complet revient dans les documents Markdown.
 - **0.1.16** (24 nov.) : synchronisez toute la bibliothèque et ses réglages `.quiet` vers WebDAV ou un stockage compatible S3. Envoi, téléchargement, synchronisation bidirectionnelle immédiate ou automatique toutes les cinq minutes.
 - **0.1.15** (23 nov.) : nouvelle icône Q. Le verrouillage de l’édition a un raccourci (⌘⇧K sur macOS, Ctrl+Shift+K sous Windows). L’export en image capture toute la page, marges comprises.

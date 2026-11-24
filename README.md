@@ -144,6 +144,7 @@ Thanks to everyone who has helped build Quiet.md. Issues and pull requests are w
 
 ## Recent updates
 
+- **0.1.18** (Nov 24): The comments panel gains a Manage button; it reveals round checkboxes for selecting and deleting several comments at once. The comment icon in the selection toolbar now renders correctly.
 - **0.1.17** (Nov 24): Add comments: select text, use the toolbar's comment button, then edit or delete them in the right panel; select several to delete at once. The full slash menu returns in Markdown documents.
 - **0.1.16** (Nov 24): Sync the whole library and its `.quiet` settings to WebDAV or S3-compatible storage. Upload, download, sync both ways, or sync automatically every five minutes.
 - **0.1.15** (Nov 23): A new Q app icon. Lock editing now has a shortcut (⌘⇧K on macOS, Ctrl+Shift+K on Windows). Export as image captures the whole page, with its side margins.

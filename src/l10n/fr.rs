@@ -1165,4 +1165,6 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("点击添加批注", "Cliquez pour commenter"),
     ("删除选中 {}", "Supprimer {}"),
     ("批注保存失败：", "Impossible d’enregistrer le commentaire : "),
+    ("管理", "Gérer"),
+    ("完成", "Terminé"),
 ];

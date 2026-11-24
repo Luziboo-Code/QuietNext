@@ -1484,7 +1484,7 @@ impl Editor {
                 btn("tb-comment")
                     .w(px(24.))
                     .tip_above(crate::settings::tr("批注", "Comment"), None)
-                    .child(icon("comment", 18., Theme::icon()))
+                    .child(icon("quote", 18., Theme::icon()))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|e, _, _, cx| {

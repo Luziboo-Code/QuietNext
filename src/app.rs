@@ -286,6 +286,7 @@ pub struct PaneState {
     pub comments_open: bool,
     pub comment_editing: Option<usize>,
     pub comment_selected: HashSet<String>,
+    pub comment_managing: bool,
     /// Last-frame bounds of this pane's header "…" button, to hang its menu from.
     pub more_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
     /// This pane's "…" menu, its open submenu, 文档信息 and 版本历史.
@@ -312,6 +313,7 @@ impl PaneState {
             comments_open: std::mem::take(&mut w.comments_open),
             comment_editing: w.comment_editing.take(),
             comment_selected: std::mem::take(&mut w.comment_selected),
+            comment_managing: std::mem::take(&mut w.comment_managing),
             more_bounds: w.more_btn_bounds.clone(),
             doc_menu: std::mem::take(&mut w.doc_menu),
             doc_sub: w.doc_sub.take(),
@@ -335,6 +337,7 @@ impl PaneState {
         w.comments_open = self.comments_open;
         w.comment_editing = self.comment_editing;
         w.comment_selected = self.comment_selected;
+        w.comment_managing = self.comment_managing;
         w.more_btn_bounds = self.more_bounds;
         w.doc_menu = self.doc_menu;
         w.doc_sub = self.doc_sub;
@@ -393,6 +396,7 @@ pub struct Workspace {
     pub comments_open: bool,
     pub comment_editing: Option<usize>,
     pub comment_selected: HashSet<String>,
+    pub comment_managing: bool,
     pub comment_field: Entity<TextField>,
     /// 设置 › 模板: the template being edited (index into `prefs().templates`),
     /// its name and its body.
@@ -922,6 +926,7 @@ impl Workspace {
             comments_open: false,
             comment_editing: None,
             comment_selected: HashSet::new(),
+            comment_managing: false,
             comment_field,
             template_index: None,
             template_name_field,

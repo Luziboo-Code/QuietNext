@@ -17,6 +17,10 @@ const REAL_FOLDERS: &str = "文档库改为真实文件夹，以标题命名，�
 /// Each version's notes: (version, [(中文, English)]). Only the running
 /// version's are shown; a version without notes shows nothing.
 const NOTES: &[(&str, &[(&str, &str)])] = &[
+    ("0.1.18", &[
+        ("批注面板新增“管理”模式，点击后显示圆框复选框，可多选后批量删除", "The comments panel gains a Manage mode with round checkboxes for deleting several comments at once"),
+        ("修复批注工具栏图标无法正常显示的问题", "Fix the comment icon in the selection toolbar"),
+    ]),
     ("0.1.17", &[
         ("新增批注：选择文字后点击工具栏的批注按钮，在右侧添加、编辑和删除批注", "New comments: select text, use the toolbar's comment button, then add, edit and delete notes in the right panel"),
         ("批注支持多选后批量删除，保存在文档库的 .quiet 中并随同步一起备份", "Select several comments to delete them at once; comments live in the library's .quiet and travel with sync"),
