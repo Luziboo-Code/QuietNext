@@ -110,6 +110,7 @@ fn hash_block(b: &Block, orders: &rustc_hash::FxHashMap<BlockId, String>, h: &mu
         }
         BlockKind::Column { ratio } => ratio.to_bits().hash(h),
         BlockKind::File(f) => (&f.src, &f.name, f.view).hash(h),
+        BlockKind::Bookmark(b) => (&b.url, &b.title, &b.description).hash(h),
         BlockKind::Board(bd) => bd.height.to_bits().hash(h),
         BlockKind::DataTable(t) => (&t.src, t.height.to_bits()).hash(h),
         BlockKind::Table(t) => {
@@ -461,6 +462,7 @@ impl R<'_> {
             BlockKind::Board(bd) => self.board_block(b, bd, cx),
             BlockKind::DataTable(t) => self.datatable_block(b, t, cx),
             BlockKind::File(f) => self.file(b, f, env, cx),
+            BlockKind::Bookmark(bm) => self.bookmark(b, bm, cx),
             BlockKind::Table(t) if self.ghost => self.ghost_table(b, t, cx),
             BlockKind::Table(t) => self.table(b, t, env.root, cx),
             BlockKind::Grid => self.grid(b, env, cx),
@@ -1841,6 +1843,7 @@ pub(super) fn block_feishu(&self, b: &Block, siblings: &[Block], idx: usize, env
             BlockKind::Board(bd) => self.board_block(b, bd, cx),
             BlockKind::DataTable(t) => self.datatable_block(b, t, cx),
             BlockKind::File(f) => self.file(b, f, env, cx),
+            BlockKind::Bookmark(bm) => self.bookmark(b, bm, cx),
             BlockKind::Table(t) if self.ghost => self.ghost_table(b, t, cx),
             BlockKind::Table(t) => self.table(b, t, env.root, cx),
             BlockKind::Grid => self.grid(b, env, cx),

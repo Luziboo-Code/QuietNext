@@ -240,6 +240,12 @@ impl Writer<'_> {
                 let _ = write!(out, "<div class=\"b\"{align}>{}", esc(&f.name));
                 out.push_str("</div>");
             }
+            BlockKind::Bookmark(b) => {
+                let label = if b.title.is_empty() { &b.url } else { &b.title };
+                let _ = write!(out, "<div class=\"bookmark\"><a href=\"{}\">{}</a>", esc(&b.url), esc(label));
+                if !b.description.is_empty() { let _ = write!(out, "<p>{}</p>", esc(&b.description)); }
+                out.push_str("</div>");
+            }
             // A 数据表 as a plain table of the view it shows.
             BlockKind::DataTable(t) => {
                 let grid = fdl_core::table::block_grid(&crate::store::Store::root_dir(), t);

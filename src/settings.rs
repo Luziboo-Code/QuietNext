@@ -2490,6 +2490,7 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "在视图设置中选择开始日期字段" => "Choose a start date field in view settings",
         "没有带日期的记录" => "No records with dates",
         "粘贴为文本" => "Paste as text",
+        "粘贴为书签" => "Paste as bookmark",
         "导入文件" => "Import file",
         "多个文件" => "Multiple files",
         "电话号码" => "Phone",

@@ -310,6 +310,11 @@ fn parse_block(e: &Element, out: &mut Vec<Block>) {
         }
         "table" => Block::new(BlockKind::Table(parse_table(e)), RichText::default()),
         "source" => Block::new(BlockKind::File(file_of(e, FileView::Card)), RichText::default()),
+        "bookmark" => Block::new(BlockKind::Bookmark(crate::model::Bookmark {
+            url: e.attr("href").unwrap_or_default().to_string(),
+            title: e.attr("title").unwrap_or_default().to_string(),
+            description: e.attr("description").unwrap_or_default().to_string(),
+        }), RichText::default()),
         "figure" if figure_source(e).is_some() => {
             let view = if e.attr("view-type").is_some_and(|v| v.eq_ignore_ascii_case("preview")) { FileView::Preview } else { FileView::Card };
             Block::new(BlockKind::File(file_of(figure_source(e).unwrap_or(e), view)), RichText::default())
@@ -916,6 +921,12 @@ fn write_block(b: &Block, s: &mut String, depth: usize) {
         BlockKind::File(f) => {
             let view = if f.view == FileView::Preview { "Preview" } else { "Card" };
             s.push_str(&format!("<figure view-type=\"{view}\"{al}>{}</figure>\n", source_xml(f)));
+        }
+        BlockKind::Bookmark(b) => {
+            s.push_str(&format!("<bookmark href=\"{}\"", esc_attr(&b.url)));
+            if !b.title.is_empty() { s.push_str(&format!(" title=\"{}\"", esc_attr(&b.title))); }
+            if !b.description.is_empty() { s.push_str(&format!(" description=\"{}\"", esc_attr(&b.description))); }
+            s.push_str("/>\n");
         }
         BlockKind::Image { src_kind, src, width, height, caption, crop } => {
             s.push_str(&format!("<img {}=\"{}\"", src_kind, esc_attr(src)));

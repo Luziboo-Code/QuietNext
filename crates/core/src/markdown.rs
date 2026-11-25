@@ -177,6 +177,10 @@ impl Writer<'_> {
             // A 数据表: the shown view as a Markdown table.
             BlockKind::DataTable(t) => crate::table::block_markdown(&self.opts.library_root.map(Path::to_path_buf).unwrap_or_else(crate::store::Store::root_dir), t),
             BlockKind::File(f) => self.file_link(f).map(|url| format!("[{}]({url})", escape(&f.name))).unwrap_or_else(|| escape(&f.name)),
+            BlockKind::Bookmark(b) => {
+                let label = if b.title.is_empty() { &b.url } else { &b.title };
+                format!("[{}]({})", escape(label), b.url.replace(' ', "%20"))
+            }
             BlockKind::SubPageList => {
                 self.opts.sub_pages.iter().map(|t| format!("- {}", escape(&crate::model::display_title(t)))).collect::<Vec<_>>().join("\n")
             }

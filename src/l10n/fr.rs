@@ -1184,4 +1184,5 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("粘贴为文本", "Coller comme texte"),
     ("导入文件", "Importer le fichier"),
     ("多个文件", "Plusieurs fichiers"),
+    ("粘贴为书签", "Coller comme signet"),
 ];

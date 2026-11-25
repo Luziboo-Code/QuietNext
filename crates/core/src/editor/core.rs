@@ -1140,6 +1140,19 @@ impl Core {
         }
     }
 
+    /// Fill in a 书签's title and description once fetched. Not an undo step:
+    /// it is the same block the paste just made.
+    pub fn refresh_bookmark(&mut self, id: BlockId, b: crate::model::Bookmark) -> bool {
+        let Some(BlockKind::Bookmark(old)) = self.kind_of(id) else { return false };
+        if *old == b { return false; }
+        if let Some(BlockKind::Bookmark(slot)) = self.block_mut(id).map(|b| &mut b.kind) {
+            *slot = b;
+            self.dirty = true;
+            return true;
+        }
+        false
+    }
+
     /// 画板: block `id`'s scene replaced (the full-window board closed with
     /// changes), as one undo step. False when nothing changed.
     /// `join`: the open board saving as it's edited — every change after

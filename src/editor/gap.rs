@@ -30,6 +30,7 @@ fn one_line(b: &Block) -> bool {
             | BlockKind::Board(_)
             | BlockKind::DataTable(_)
             | BlockKind::File(_)
+            | BlockKind::Bookmark(_)
             | BlockKind::Raw { .. }
     )
 }

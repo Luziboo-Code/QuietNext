@@ -88,6 +88,7 @@ pub fn kind_icon(k: &BlockKind) -> &'static str {
         BlockKind::Board(_) => "palette",
         BlockKind::DataTable(_) => "table",
         BlockKind::File(_) => "paperclip",
+        BlockKind::Bookmark(_) => "globe",
     }
 }
 
@@ -327,6 +328,7 @@ impl Editor {
             Some(Menu::Reminder { block, offset }) => self.reminder_popover(block, offset, window, cx),
             Some(Menu::Template { pos, selected }) => self.template_picker(pos, selected, window, cx),
             Some(Menu::PasteFile { paths, text, pos }) => self.paste_file_menu(&paths, &text, pos, cx),
+            Some(Menu::PasteUrl { url, pos }) => self.paste_url_menu(&url, pos, cx),
             _ => None,
         };
         out.extend(menu_el);
@@ -1367,6 +1369,40 @@ impl Editor {
                 .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(12.)).text_color(Theme::text_caption()).child(name)))
             .child(as_text)
             .child(import);
+        Some(at(self.rel(pos), Anchor::TopLeft, el))
+    }
+
+    /// ⌘V found a web address: keep it as text, or make a link card.
+    fn paste_url_menu(&self, url: &str, pos: Point<Pixels>, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let row = |id: &'static str, glyph: &'static str, label: &'static str| {
+            div().id(id).flex_none().h(px(MENU_ROW_H)).mx(px(MENU_INSET)).px(px(8.)).flex().items_center().gap(px(8.))
+                .rounded(px(crate::ui::ROW_RADIUS)).cursor_pointer().hover(|s| s.bg(Theme::fill_hover()))
+                .child(icon(glyph, 14., Theme::icon()))
+                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(crate::settings::text(label)))
+        };
+        let as_text = {
+            let url = url.to_string();
+            row("paste-url-text", "file-text", "粘贴为文本").on_mouse_down(MouseButton::Left, cx.listener(move |e, _, window, cx| {
+                cx.stop_propagation();
+                e.menu = None;
+                e.paste_url_as_text(&url, window, cx);
+            }))
+        };
+        let as_bookmark = {
+            let url = url.to_string();
+            row("paste-url-bookmark", "globe", "粘贴为书签").on_mouse_down(MouseButton::Left, cx.listener(move |e, _, window, cx| {
+                cx.stop_propagation();
+                e.menu = None;
+                e.paste_url_as_bookmark(&url, window, cx);
+            }))
+        };
+        let el = menu().id("paste-url-menu").occlude().w(px(360.)).py(px(MENU_PAD_Y))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(div().px(px(12.)).h(px(38.)).flex().items_center().gap(px(8.)).border_b_1().border_color(Theme::line_divider())
+                .child(icon("globe", 15., Theme::icon()))
+                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(12.)).text_color(Theme::text_caption()).child(url.to_string())))
+            .child(as_text)
+            .child(as_bookmark);
         Some(at(self.rel(pos), Anchor::TopLeft, el))
     }
 

@@ -112,6 +112,8 @@ pub enum Menu {
     Template { pos: Point<Pixels>, selected: usize },
     /// ⌘V with files on the clipboard: paste their paths as text, or import them.
     PasteFile { paths: Vec<PathBuf>, text: Option<String>, pos: Point<Pixels> },
+    /// ⌘V with a web address: paste it as text, or make a link card.
+    PasteUrl { url: String, pos: Point<Pixels> },
 }
 
 pub type BoundsMap = Rc<RefCell<HashMap<BlockId, Bounds<Pixels>>>>;
@@ -125,6 +127,14 @@ fn local_file_path(line: &str) -> Option<PathBuf> {
     let s = if decoded.is_some() && s.starts_with('/') && s.as_bytes().get(2) == Some(&b':') { &s[1..] } else { s };
     let p = std::path::Path::new(s);
     (p.is_absolute() && p.is_file()).then(|| p.to_path_buf())
+}
+
+/// A clipboard line that is just one http(s) address.
+fn lone_url(text: &str) -> Option<String> {
+    let s = text.trim();
+    if s.split_whitespace().count() != 1 { return None; }
+    let u = url::Url::parse(s).ok()?;
+    matches!(u.scheme(), "http" | "https").then(|| s.to_string())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -2132,6 +2142,16 @@ impl Editor {
             cx.notify();
             return;
         }
+        if !plain && rich_target && pasted_files.is_empty() && internal.is_none() && self.menu.is_none()
+            && let Some(url) = text.as_deref().and_then(lone_url)
+        {
+            let rect = self.block_rect(self.core.sel.head.block);
+            let pos = rect.map_or_else(|| point(px(32.), px(crate::app::HEADER_H + 12.)), |r| point(r.left(), r.bottom()));
+            self.menu = Some(Menu::PasteUrl { url, pos });
+            self.slash = None;
+            cx.notify();
+            return;
+        }
         let html = match &fake {
             Some(f) => f.html.clone(),
             None if !plain && internal.is_none() && rich_target && !text.as_deref().is_some_and(crate::paste::has_math) => {
@@ -2239,6 +2259,15 @@ impl Editor {
         }
         if !docs.is_empty() { self.import_files(docs, None, window, cx); }
         self.changed(window, cx);
+    }
+
+    pub(super) fn paste_url_as_text(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.core.paste_text(url);
+        self.changed(window, cx);
+    }
+
+    pub(super) fn paste_url_as_bookmark(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.insert_bookmark(url, window, cx);
     }
 
     fn on_undo(&mut self, _: &k::Undo, window: &mut Window, cx: &mut Context<Self>) {

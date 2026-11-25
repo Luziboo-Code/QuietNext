@@ -759,6 +759,8 @@ pub enum BlockKind {
     Countdown(Countdown),
     /// 视频或文件 (`<source>`, or `<figure view-type><source/></figure>`).
     File(FileBlock),
+    /// 网页书签 (`<bookmark href title description>`).
+    Bookmark(Bookmark),
     /// 画板 (`<whiteboard type="excalidraw">`): an Excalidraw scene, shared
     /// between undo snapshots until it changes.
     Board(std::sync::Arc<crate::whiteboard::Board>),
@@ -851,6 +853,14 @@ pub enum FileView {
 
 /// 红 / 橙 / 黄 / 绿 / 蓝 / 紫 / 灰; orange is the default.
 pub const COUNTDOWN_COLORS: [&str; 7] = ["#F76964", "#FF8800", "#FFC60A", "#62D256", "#4E83FD", "#935AF6", "#BBBFC4"];
+
+/// A web link shown as a card (title and description fetched from the page).
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Bookmark {
+    pub url: String,
+    pub title: String,
+    pub description: String,
+}
 
 impl Default for Countdown {
     fn default() -> Self {

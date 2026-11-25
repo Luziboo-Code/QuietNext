@@ -1152,4 +1152,5 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("粘贴为文本", "Metin olarak yapıştır"),
     ("导入文件", "Dosyayı içe aktar"),
     ("多个文件", "Birden fazla dosya"),
+    ("粘贴为书签", "Yer imi olarak yapıştır"),
 ];
