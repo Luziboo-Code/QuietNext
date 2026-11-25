@@ -1557,12 +1557,12 @@ impl Editor {
                     ),
             )
             .child(mark_btn("tb-code", "code", crate::settings::text("代码"), crate::shortcuts::hint("editor::InlineCode", "⌘ + Control + C"), Some(crate::settings::text("`代码`")), Mark::Code, |m| m.code))
-            .when(!self.markdown, |d| d.child(color_btn))
+            .child(color_btn)
             .child(
                 btn("tb-comment")
                     .w(px(24.))
                     .tip_above(crate::settings::tr("批注", "Comment"), None)
-                    .child(icon("quote", 18., Theme::icon()))
+                    .child(icon("message-square", 18., Theme::icon()))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|e, _, _, cx| {

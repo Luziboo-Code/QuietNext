@@ -1308,6 +1308,19 @@ pub fn is_numeric_math(src: &str) -> bool {
     src.contains('\\') || src.contains('=') || src.contains('+') || src.contains('/') || src.contains("×") || src.contains("÷")
 }
 
+/// One attribute of a tag written as text (`<span style="…">`).
+fn attr_value(tag: &str, key: &str) -> Option<String> {
+    let lower = tag.to_ascii_lowercase();
+    let start = lower.find(&format!("{key}="))? + key.len() + 1;
+    let rest = &tag[start..];
+    let quote = rest.chars().next()?;
+    if quote == '"' || quote == '\'' {
+        rest[1..].find(quote).map(|end| rest[1..1 + end].to_string())
+    } else {
+        rest.split_whitespace().next().map(str::to_string)
+    }
+}
+
 /// Inline Markdown: code spans, equations, links, bare URLs and the emphasis
 /// rules of the live shortcuts (`~x~` is underline). Paste turns escapes,
 /// images and `<…>` autolinks off.
@@ -1330,6 +1343,28 @@ pub fn md_inline(s: &str) -> RichText {
         if c == '\\' && let Some(next) = rest[1..].chars().next().filter(char::is_ascii_punctuation) {
             plain.push(next);
             i += 1 + next.len_utf8();
+            continue;
+        }
+        // `<span style="color:…;background-color:…">text</span>`: inline colors
+        // written by Markdown export. Nested spans are not produced by us.
+        if rest.starts_with("<span") && let Some(gt) = rest.find('>') && let Some(end) = rest[gt + 1..].find("</span>") {
+            let open = &rest[..=gt];
+            let inner = &rest[gt + 1..gt + 1 + end];
+            let mut rt = md_inline(inner);
+            if let Some(style) = attr_value(open, "style") {
+                for decl in style.split(';') {
+                    let Some((k, v)) = decl.split_once(':') else { continue };
+                    let (k, v) = (k.trim().to_ascii_lowercase(), v.trim());
+                    match k.as_str() {
+                        "color" => if let Some(n) = parse_color(v).and_then(palette_text) { rt.runs.iter_mut().for_each(|r| r.marks.text_color = n.clone()); },
+                        "background-color" | "background" => if let Some(n) = parse_color(v).and_then(palette_bg) { rt.runs.iter_mut().for_each(|r| r.marks.bg_color = n.clone()); },
+                        _ => {}
+                    }
+                }
+            }
+            flush(&mut plain, &mut out);
+            out.append(&rt);
+            i += gt + 1 + end + 7;
             continue;
         }
         // Code span.

@@ -770,6 +770,9 @@ struct Md {
     underline: bool,
     code: bool,
     link: Option<String>,
+    /// Inline colors (Notion-style); written as a `<span style>` so they survive a round trip.
+    text_color: Option<String>,
+    bg_color: Option<String>,
     /// An equation: its own run, written as it is (escaping would change the LaTeX).
     math: bool,
 }
@@ -807,6 +810,8 @@ fn inline(t: &RichText, files: &mut impl FnMut(&FileBlock) -> Option<String>) ->
             underline: m.underline,
             code: m.code,
             link: file_link.or_else(|| m.link.clone().filter(|url| crate::paste::link_ok(url) || crate::paste::relative_link(url) || url.starts_with("quiet-wiki:"))),
+            text_color: m.text_color.as_ref().map(|c| c.0.clone()),
+            bg_color: m.bg_color.as_ref().map(|c| c.0.clone()),
             math: m.inline.as_ref().and_then(Inline::equation).is_some(),
         };
         match runs.last_mut() {
@@ -867,6 +872,18 @@ fn inline(t: &RichText, files: &mut impl FnMut(&FileBlock) -> Option<String>) ->
         if let Some(url) = &m.link {
             x = format!("[{x}]({})", url.replace(' ', "%20").replace(')', "%29"));
         }
+        let mut style = String::new();
+        if let Some(name) = &m.text_color && let Some(c) = crate::palette::text_color(name) {
+            style.push_str(&format!("color:#{:02x}{:02x}{:02x};", c.r, c.g, c.b));
+        }
+        if let Some(name) = &m.bg_color && let Some(c) = crate::palette::bg_color(name) {
+            if c.a < 0.999 {
+                style.push_str(&format!("background-color:rgba({},{},{},{:.3});", c.r, c.g, c.b, c.a));
+            } else {
+                style.push_str(&format!("background-color:#{:02x}{:02x}{:02x};", c.r, c.g, c.b));
+            }
+        }
+        if !style.is_empty() { x = format!("<span style=\"{style}\">{x}</span>"); }
         out.push_str(lead);
         out.push_str(&x);
         out.push_str(trail);
@@ -909,6 +926,19 @@ mod tests {
         let mut out = text.to_string();
         for _ in 0..3 { out = write_file(&parse_file(&out, "t", None), "", None); }
         assert_eq!(out, text);
+    }
+
+    #[test]
+    fn inline_colors_round_trip() {
+        let mut text = RichText::default();
+        text.push("red", Marks { text_color: Some(ColorName("red".into())), bg_color: Some(ColorName("light-yellow".into())), ..Default::default() });
+        let doc = Document { blocks: vec![Block::new(BlockKind::Text, text)], ..Default::default() };
+        let md = write_file(&doc, "", None);
+        assert!(md.contains("<span style=\"color:#"), "{md}");
+        let back = parse_file(&md, "t", None);
+        let text = &back.blocks[0].text;
+        let got: Vec<_> = text.spans().map(|(r, m)| (text.text[r].to_string(), m.text_color.clone(), m.bg_color.clone())).collect();
+        assert_eq!(got, vec![("red".into(), Some(ColorName("red".into())), Some(ColorName("light-yellow".into())))]);
     }
 
     #[test]

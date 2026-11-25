@@ -1260,7 +1260,6 @@ impl Editor {
 
     /// Text color / background from the color panel (None = default).
     pub fn apply_color(&mut self, text: Option<Option<ColorName>>, bg: Option<Option<ColorName>>, window: &mut Window, cx: &mut Context<Self>) {
-        if self.markdown { return; }
         if let Some(t) = &text {
             self.last_color.0 = t.clone();
         }
