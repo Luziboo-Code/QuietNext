@@ -1153,4 +1153,6 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("导入文件", "Dosyayı içe aktar"),
     ("多个文件", "Birden fazla dosya"),
     ("粘贴为书签", "Yer imi olarak yapıştır"),
+    ("保留空行", "Boş satırları koru"),
+    ("Markdown 文档中的空行不再自动合并；关闭后空行会被压缩。", "Markdown belgelerindeki boş satırlar korunur; kapatıldığında sıkıştırılır."),
 ];

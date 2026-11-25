@@ -1099,4 +1099,6 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("导入文件", "Importar archivo"),
     ("多个文件", "Varios archivos"),
     ("粘贴为书签", "Pegar como marcador"),
+    ("保留空行", "Conservar líneas en blanco"),
+    ("Markdown 文档中的空行不再自动合并；关闭后空行会被压缩。", "Las líneas en blanco de los documentos Markdown se conservan; al desactivarlo se comprimen."),
 ];

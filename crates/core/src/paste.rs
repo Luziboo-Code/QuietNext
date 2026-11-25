@@ -974,8 +974,20 @@ fn md_blocks(lines: &[&str], off: Off, mut spans: Option<&mut Vec<(usize, usize)
         let line = lines[i];
         // Blank lines are empty paragraphs (none before the first block).
         if line.trim().is_empty() {
-            if !out.is_empty() && !off.file {
-                out.push(Block::text(""));
+            if !out.is_empty() {
+                if !off.file {
+                    out.push(Block::text(""));
+                } else if crate::markdown::keep_blank_lines() {
+                    // One blank line separates paragraphs; each extra one is an
+                    // empty paragraph the user asked to keep.
+                    let start = i;
+                    while i < lines.len() && lines[i].trim().is_empty() { i += 1; }
+                    if lines[i..].iter().any(|l| !l.trim().is_empty()) {
+                        for _ in 1..(i - start) { out.push(Block::text("")); }
+                    }
+                    last_list = false;
+                    continue;
+                }
             }
             last_list = false;
             i += 1;

@@ -155,6 +155,9 @@ pub struct Preferences {
     /// 退格键回到标题: Backspace at the start of the body merges the first
     /// paragraph into the title (the default); off keeps the caret in the body.
     pub backspace_to_title: bool,
+    /// 保留空行: Markdown documents keep extra blank lines instead of collapsing them.
+    #[serde(default = "keep_blank_lines_default")]
+    pub keep_blank_lines: bool,
     /// 模板: user-defined document templates, inserted at the caret.
     #[serde(default = "default_templates")]
     pub templates: Vec<crate::templates::Template>,
@@ -200,11 +203,12 @@ fn ai_base_default() -> String { "https://api.openai.com/v1".into() }
 fn ai_model_default() -> String { "gpt-4o-mini".into() }
 /// 模板: the built-in starters, shown until the user edits the list.
 fn default_templates() -> Vec<crate::templates::Template> { crate::templates::builtin() }
+fn keep_blank_lines_default() -> bool { true }
 
 impl Default for Preferences {
     fn default() -> Self {
         let lang = system_lang();
-        Preferences { theme: String::new(), feishu: true, english: lang != Lang::Zh, language: lang.code().into(), remote_images: true, quick_hotkey: true, auto_update: true, appearance: String::new(), seen_version: String::new(), motion: String::new(), new_default: String::new(), last_new: String::new(), search_engine: String::new(), start_home: false, browser: String::new(), opaque_window: false, ui_font: String::new(), page_width: String::new(), review_new_per_day: 20, review_max_per_day: 200, review_retention: 90, ai_base_url: ai_base_default(), ai_model: ai_model_default(), ui_family: String::new(), doc_family: String::new(), migrate_later: 0, find_regex: false, backspace_to_title: true, templates: default_templates() }
+        Preferences { theme: String::new(), feishu: true, english: lang != Lang::Zh, language: lang.code().into(), remote_images: true, quick_hotkey: true, auto_update: true, appearance: String::new(), seen_version: String::new(), motion: String::new(), new_default: String::new(), last_new: String::new(), search_engine: String::new(), start_home: false, browser: String::new(), opaque_window: false, ui_font: String::new(), page_width: String::new(), review_new_per_day: 20, review_max_per_day: 200, review_retention: 90, ai_base_url: ai_base_default(), ai_model: ai_model_default(), ui_family: String::new(), doc_family: String::new(), migrate_later: 0, find_regex: false, backspace_to_title: true, keep_blank_lines: true, templates: default_templates() }
     }
 }
 
@@ -247,6 +251,7 @@ pub fn load() {
 fn apply(p: Preferences) {
     FEISHU.store(p.feishu, Ordering::Relaxed);
     LANG.store(p.lang() as u8, Ordering::Relaxed);
+    crate::markdown::set_keep_blank_lines(p.keep_blank_lines);
     crate::model::set_untitled(translate(crate::model::UNTITLED, p.lang()));
     MOTION_HIGH.store(p.motion == "high", Ordering::Relaxed);
     // Before the themes are read (startup) the base comes from `feishu`.
@@ -1147,6 +1152,8 @@ impl Workspace {
                     switch("pref-update", p.auto_update).on_click(cx.listener(|w, _, _, cx| w.set_pref(|p| p.auto_update = !p.auto_update, cx)))).into_any_element(),
                 row(tr("退格键回到标题", "Backspace returns to title"), desc(tr("在正文开头按退格键时回到标题，第一段文字并入标题。关闭后光标留在正文。", "Backspace at the start of the body moves to the title, joining the first paragraph to it. When off the caret stays in the body.")),
                     switch("pref-backspace-title", p.backspace_to_title).on_click(cx.listener(|w, _, _, cx| w.set_pref(|p| p.backspace_to_title = !p.backspace_to_title, cx)))).into_any_element(),
+                row(tr("保留空行", "Keep blank lines"), desc(tr("Markdown 文档中的空行不再自动合并；关闭后空行会被压缩。", "Blank lines in Markdown documents are kept; when off they are collapsed.")),
+                    switch("pref-blank-lines", p.keep_blank_lines).on_click(cx.listener(|w, _, _, cx| w.set_pref(|p| p.keep_blank_lines = !p.keep_blank_lines, cx)))).into_any_element(),
                 // The key as bound (Ctrl+N off macOS, or the user's own), in every language's text.
                 row(tr("快捷新建默认类型", "Quick new (⌘N)").replace("⌘N", new_key), Some(tr("⌘N 新建时创建的类型；「记住上次」沿用你上次从新建菜单选的类型。", "What ⌘N creates; “Last used” repeats the type you last picked from the New menu.").replace("⌘N", new_key).into()), {
                     let sel = match p.new_default.as_str() { "doc" => 1, "markdown" => 2, _ => 0 };

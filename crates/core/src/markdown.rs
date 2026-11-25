@@ -42,6 +42,14 @@ pub struct Export {
     pub generated: Vec<(String, String)>,
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// 保留空行: Markdown files keep extra blank lines as empty paragraphs.
+static KEEP_BLANK_LINES: AtomicBool = AtomicBool::new(false);
+
+pub fn set_keep_blank_lines(on: bool) { KEEP_BLANK_LINES.store(on, Ordering::Relaxed); }
+pub fn keep_blank_lines() -> bool { KEEP_BLANK_LINES.load(Ordering::Relaxed) }
+
 #[cfg(test)]
 pub fn to_markdown(doc: &Document) -> String {
     export(doc, &Options { assets: Some("assets"), ..Default::default() }).text
@@ -102,6 +110,12 @@ impl Writer<'_> {
         let mut seq = 0u32;
         for b in bs.iter() {
             let list = b.kind.is_list();
+            // 保留空行: an empty paragraph adds one blank line of its own.
+            if keep_blank_lines() && matches!(b.kind, BlockKind::Text) && b.text.text.is_empty() && b.children.is_empty() {
+                if !out.is_empty() { out.push(Piece { sep: "\n", text: String::new() }); }
+                prev_list = false;
+                continue;
+            }
             // Different kinds of list are separate lists.
             // An item numbered on its own starts a new list (read back, a tight one would continue the last).
             let same = prev.is_some_and(|p| std::mem::discriminant(p) == std::mem::discriminant(&b.kind)) && !matches!(b.kind, BlockKind::Ordered { seq: Some(_) });
@@ -598,6 +612,11 @@ fn preserve(original: &str, pieces: &[Piece], opts: &Options, strict: bool) -> S
         // `pieces` drops empty blocks; walk the same way to keep each span.
         for (b, span) in blocks.iter().zip(&spans) {
             let list = b.kind.is_list();
+            if keep_blank_lines() && matches!(b.kind, BlockKind::Text) && b.text.text.is_empty() && b.children.is_empty() {
+                old.push((String::new(), *span));
+                prev_list = false;
+                continue;
+            }
             match &b.kind {
                 BlockKind::Ordered { seq: Some(n) } => seq = *n,
                 BlockKind::Ordered { seq: None } => seq = if prev_list && seq > 0 { seq + 1 } else { 1 },
