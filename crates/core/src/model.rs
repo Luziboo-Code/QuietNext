@@ -955,7 +955,23 @@ pub struct Document {
     /// 文档图标: an emoji shown before the title (file-level, not undone).
     pub icon: Option<String>,
     pub cover: Option<Cover>,
+    /// 标题自动编号: levels, restart and starting values.
+    pub numbering: HeadingNumbering,
     pub blocks: Vec<Block>,
+}
+
+/// 标题自动编号 settings, saved on the document's `<title>`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HeadingNumbering {
+    pub enabled: bool,
+    /// A deeper heading restarts below every higher-level heading.
+    pub restart: bool,
+    /// Starting number for H1..H6.
+    pub start: [u32; 6],
+}
+
+impl Default for HeadingNumbering {
+    fn default() -> Self { HeadingNumbering { enabled: false, restart: true, start: [1; 6] } }
 }
 
 /// 封面: a local image plus `offset_ratio_x/y` (0 = centred).
@@ -972,6 +988,7 @@ impl Default for Document {
             title: RichText::default(),
             icon: None,
             cover: None,
+            numbering: HeadingNumbering::default(),
             blocks: vec![Block::text("")],
         }
     }

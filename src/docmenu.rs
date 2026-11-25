@@ -11,6 +11,7 @@ use gpui::{prelude::FluentBuilder, *};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DocSub {
     Width,
+    Numbering,
     Download,
     /// 更多: 显示引用列表.
     More,
@@ -164,6 +165,7 @@ impl Workspace {
         let pinned = entry.is_some_and(|e| e.meta.pinned);
         let starred = entry.is_some_and(|e| e.meta.starred > 0);
         let width = entry.and_then(|e| e.meta.width).unwrap_or_else(|| crate::settings::prefs().page_width());
+        let numbering = self.editor.as_ref().map(|e| e.read(cx).core.doc.numbering.clone()).unwrap_or_default();
         let locked = entry.is_some_and(|e| e.meta.locked);
         let refs_shown = !entry.is_some_and(|e| e.meta.refs_hidden);
         // An open board isn't the page: no page width, find in its text or
@@ -218,11 +220,23 @@ impl Workspace {
                 menu_item("dm-width", "page-width", crate::settings::text("页宽设置"), true, sub == Some(DocSub::Width))
                     .on_hover(hover_sub(Some(DocSub::Width))),
             )
+            .when(!board, |d| d.child(
+                menu_item("dm-numbering", "list-ordered", crate::settings::text("自动编排序号"), true, sub == Some(DocSub::Numbering))
+                    .on_hover(hover_sub(Some(DocSub::Numbering))),
+            ))
             .child(divider())
             .child(
                 menu_item("dm-find", "text-search", crate::settings::text("查找和替换"), false, false)
                     .on_hover(hover_sub(None))
                     .on_click(cx.listener(|w, _, window, cx| w.find_in_doc(false, window, cx))),
+            )
+            .child(
+                menu_item("dm-random", "restore", crate::settings::text("随机打开文档"), false, false)
+                    .on_hover(hover_sub(None))
+                    .on_click(cx.listener(|w, _, window, cx| {
+                        w.close_doc_menu(cx);
+                        w.open_random_doc(window, cx);
+                    })),
             )
             // 分屏打开: the document beside the open one, both in this window.
             .when(!board, |d| d.child(
@@ -331,9 +345,13 @@ impl Workspace {
         let hidden = if board { (2, 2) } else { (0, 0) };
         let sub_el = match sub {
             Some(DocSub::Width) => Some((item_top(shift_items, shift_items) - 1. - PAD, self.width_panel(width, cx).child(recorder()).into_any_element())),
+            Some(DocSub::Numbering) => Some((
+                item_top(shift_items + 1, shift_items + 1) - 1. - PAD,
+                self.numbering_panel(&numbering, cx).child(recorder()).into_any_element(),
+            )),
             // Level the submenu's first item with 下载为.
             Some(DocSub::Download) => Some((
-                item_top(7 + shift_items - hidden.0, 3 + shift_items - hidden.1) - 1. - PAD,
+                item_top(9 + shift_items - hidden.0, 3 + shift_items - hidden.1) - 1. - PAD,
                 {
                     let pdf = id.clone();
                     let md = id.clone();
@@ -479,5 +497,55 @@ impl Workspace {
                     .child(card("pw-wide", crate::settings::text("较宽"), PageWidth::Wide, 28.))
                     .child(card("pw-full", crate::settings::text("全宽"), PageWidth::Full, 38.)),
             )
+    }
+
+    fn set_heading_numbering(&mut self, f: impl FnOnce(&mut crate::model::HeadingNumbering), window: &mut Window, cx: &mut Context<Self>) {
+        let Some(ed) = self.editor.clone() else { return };
+        ed.update(cx, |e, cx| {
+            let mut n = e.core.doc.numbering.clone();
+            f(&mut n);
+            e.core.set_heading_numbering(n);
+            e.changed(window, cx);
+        });
+        cx.notify();
+    }
+
+    /// 自动编号: enable, restart and the starting number of each heading level.
+    fn numbering_panel(&self, n: &crate::model::HeadingNumbering, cx: &mut Context<Self>) -> Stateful<Div> {
+        let text = crate::settings::text;
+        let toggle = |id: &'static str, label: &'static str, on: bool| {
+            crate::ui::menu_row(id, SharedString::from(id)).mx(px(0.))
+                .child(div().flex_1().min_w_0().child(text(label)))
+                .when(on, |d| d.child(crate::ui::icon("check", 14., Theme::primary())))
+        };
+        let mut p = popover().id("dm-numbering-panel").occlude().relative().w(px(248.)).py(px(PAD)).px(px(6.)).flex().flex_col()
+            .child(div().px(px(8.)).pt(px(4.)).pb(px(6.)).text_size(px(12.)).text_color(Theme::text_caption()).child(text("标题自动编号")))
+            .child(toggle("dm-num-on", "启用自动编号", n.enabled).on_click(cx.listener(|w, _, window, cx| {
+                w.set_heading_numbering(|n| n.enabled = !n.enabled, window, cx);
+            })))
+            .child(toggle("dm-num-restart", "自动重新开始", n.restart).on_click(cx.listener(|w, _, window, cx| {
+                w.set_heading_numbering(|n| n.restart = !n.restart, window, cx);
+            })))
+            .child(div().mx(px(8.)).my(px(4.)).text_size(px(11.)).line_height(px(16.)).text_color(Theme::text_caption())
+                .child(text("下级标题在高一级标题后重新从起始值编号。")))
+            .child(div().px(px(8.)).pt(px(4.)).pb(px(4.)).text_size(px(12.)).text_color(Theme::text_caption()).child(text("起始序号")));
+        for level in 0..6 {
+            let value = n.start[level];
+            let step = |id: (&'static str, usize), label: &'static str, delta: i64| {
+                div().id(id).size(px(22.)).rounded(px(4.)).flex().items_center().justify_center().cursor_pointer()
+                    .hover(|s| s.bg(Theme::fill_hover())).text_size(px(13.)).text_color(Theme::text()).child(label)
+                    .on_click(cx.listener(move |w, _, window, cx| {
+                        w.set_heading_numbering(|n| {
+                            n.start[level] = (n.start[level] as i64 + delta).clamp(1, 999) as u32;
+                        }, window, cx);
+                    }))
+            };
+            p = p.child(div().h(px(30.)).px(px(8.)).flex().items_center().gap(px(4.))
+                .child(div().w(px(42.)).flex_none().text_size(px(12.)).child(format!("H{}", level + 1)))
+                .child(step(("dm-num-dec", level), "−", -1))
+                .child(div().w(px(30.)).flex_none().text_center().text_size(px(12.)).child(value.to_string()))
+                .child(step(("dm-num-inc", level), "+", 1)));
+        }
+        p
     }
 }

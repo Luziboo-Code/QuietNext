@@ -102,6 +102,15 @@ pub fn parse(xml: &str) -> Result<Document> {
                 x: e.attr("cover-x").and_then(|v| v.parse().ok()).unwrap_or(0.),
                 y: e.attr("cover-y").and_then(|v| v.parse().ok()).unwrap_or(0.),
             });
+            if e.attr("numbering") == Some("true") {
+                doc.numbering.enabled = true;
+                doc.numbering.restart = e.attr("restart") != Some("false");
+                if let Some(start) = e.attr("start") {
+                    for (i, n) in start.split(',').take(6).enumerate() {
+                        if let Ok(n) = n.trim().parse::<u32>() { doc.numbering.start[i] = n.max(1); }
+                    }
+                }
+            }
             continue;
         }
         parse_block_node(n, &mut doc.blocks);
@@ -726,6 +735,13 @@ pub fn serialize(doc: &Document) -> String {
         }
         if c.y != 0. {
             s.push_str(&format!(" cover-y=\"{}\"", c.y));
+        }
+    }
+    if doc.numbering.enabled {
+        s.push_str(" numbering=\"true\"");
+        if !doc.numbering.restart { s.push_str(" restart=\"false\""); }
+        if doc.numbering.start != [1; 6] {
+            s.push_str(&format!(" start=\"{}\"", doc.numbering.start.iter().map(u32::to_string).collect::<Vec<_>>().join(",")));
         }
     }
     s.push('>');

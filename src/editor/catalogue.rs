@@ -129,7 +129,7 @@ pub fn entries(doc: &Document) -> Vec<CatEntry> {
         return vec![];
     }
     // Numbered headings read "1.2 Title".
-    let orders = super::core::heading_orders(&doc.blocks);
+    let orders = super::core::heading_orders(&doc.blocks, &doc.numbering);
     for r in &mut raw {
         if let Some(o) = orders.get(&r.0) {
             r.1 = format!("{o} {}", r.1);

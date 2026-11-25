@@ -50,6 +50,24 @@ static KEEP_BLANK_LINES: AtomicBool = AtomicBool::new(false);
 pub fn set_keep_blank_lines(on: bool) { KEEP_BLANK_LINES.store(on, Ordering::Relaxed); }
 pub fn keep_blank_lines() -> bool { KEEP_BLANK_LINES.load(Ordering::Relaxed) }
 
+/// 标题自动编号 in a Markdown file: an invisible HTML comment before the body.
+const NUMBERING_OPEN: &str = "<!--quietnext-numbering:";
+
+fn take_numbering(body: &str) -> (String, Option<HeadingNumbering>) {
+    let Some(rest) = body.strip_prefix(NUMBERING_OPEN) else { return (body.to_string(), None) };
+    let Some(end) = rest.find("-->") else { return (body.to_string(), None) };
+    let vals: Vec<u32> = rest[..end].split(',').filter_map(|v| v.trim().parse().ok()).collect();
+    if vals.len() < 8 { return (body.to_string(), None) }
+    let mut n = HeadingNumbering { enabled: true, restart: vals[1] != 0, start: [1; 6] };
+    for i in 0..6 { n.start[i] = vals[i + 2].max(1); }
+    (rest[end + 3..].trim_start_matches(['\r', '\n']).to_string(), Some(n))
+}
+
+fn numbering_comment(n: &HeadingNumbering) -> String {
+    if !n.enabled { return String::new() }
+    format!("{NUMBERING_OPEN}1,{},{}-->\n", u8::from(n.restart), n.start.iter().map(u32::to_string).collect::<Vec<_>>().join(","))
+}
+
 #[cfg(test)]
 pub fn to_markdown(doc: &Document) -> String {
     export(doc, &Options { assets: Some("assets"), ..Default::default() }).text
@@ -555,14 +573,15 @@ fn walk_names(vault: &Path, hidden: bool) -> Names {
 pub fn parse_file(text: &str, title: &str, base: Option<&Path>) -> Document {
     let text = text.trim_start_matches('\u{feff}');
     let (_, body) = front_matter(text);
-    let mut blocks = crate::paste::markdown_to_blocks(body, crate::paste::Off { file: true, alt: true, ..Default::default() });
+    let (body, numbering) = take_numbering(body);
+    let mut blocks = crate::paste::markdown_to_blocks(&body, crate::paste::Off { file: true, alt: true, ..Default::default() });
     if let Some(dir) = base {
         resolve_images(&mut blocks, dir);
     }
     if blocks.is_empty() {
         blocks.push(Block::text(""));
     }
-    Document { title: RichText::plain(title), icon: None, cover: None, blocks }
+    Document { title: RichText::plain(title), icon: None, cover: None, numbering: numbering.unwrap_or_default(), blocks }
 }
 
 /// `doc` written back as a Markdown file, after the file's `front` matter.
@@ -588,7 +607,8 @@ pub fn write_file_with(doc: &Document, front: &str, opts: &Options) -> Export {
     // A file opening with a `---` line would read back as front matter.
     let misread = front.is_empty() && !front_matter(&body).0.is_empty();
     let body = match body.strip_prefix("---\n").filter(|_| misread) { Some(rest) => format!("***\n{rest}"), None => body };
-    let text = if body.trim().is_empty() { front.to_string() } else { format!("{front}{body}") };
+    let marker = numbering_comment(&doc.numbering);
+    let text = if body.trim().is_empty() && marker.is_empty() { front.to_string() } else { format!("{front}{marker}{body}") };
     Export { text, files: w.files, generated: vec![], missing: 0 }
 }
 
@@ -598,6 +618,7 @@ pub fn write_file_with(doc: &Document, front: &str, opts: &Options) -> Export {
 /// blank lines stay too. Only changed blocks take the written form.
 fn preserve(original: &str, pieces: &[Piece], opts: &Options, strict: bool) -> String {
     let (_, body) = front_matter(original.trim_start_matches('\u{feff}'));
+    let (body, _) = take_numbering(body);
     let crlf = body.contains("\r\n");
     let norm = body.replace("\r\n", "\n");
     let (mut blocks, spans) = crate::paste::markdown_to_blocks_with_lines(&norm, crate::paste::Off { file: true, alt: true, ..Default::default() });
@@ -945,6 +966,18 @@ mod tests {
         let mut out = text.to_string();
         for _ in 0..3 { out = write_file(&parse_file(&out, "t", None), "", None); }
         assert_eq!(out, text);
+    }
+
+    #[test]
+    fn heading_numbering_marker_round_trips() {
+        let mut doc = parse_file("a\n", "t", None);
+        doc.numbering = HeadingNumbering { enabled: true, restart: false, start: [3, 5, 1, 1, 1, 1] };
+        let out = write_file(&doc, "", None);
+        assert!(out.starts_with("<!--quietnext-numbering:1,0,3,5,1,1,1,1-->\n"), "{out}");
+        let back = parse_file(&out, "t", None);
+        assert_eq!(back.numbering, doc.numbering);
+        assert_eq!(back.blocks.len(), 1);
+        assert_eq!(back.blocks[0].text.text, "a");
     }
 
     #[test]

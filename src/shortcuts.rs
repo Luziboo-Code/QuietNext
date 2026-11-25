@@ -213,6 +213,7 @@ fn info(name: &str) -> Option<(usize, &'static str, &'static str)> {
         "ToggleFullScreen" => (0, "进入 / 退出全屏", "Enter / exit full screen"),
         "OpenSettings" => (0, "打开设置", "Open Settings"),
         "GoHome" => (0, "返回主页", "Go to Home"),
+        "RandomDoc" => (0, "随机打开文档", "Random document"),
         "ToggleSidebar" => (0, "展开 / 收起侧栏", "Show / hide sidebar"),
         "SplitView" => (0, "分屏", "Split view"),
         "FocusSearch" => (0, "搜索文档", "Search documents"),

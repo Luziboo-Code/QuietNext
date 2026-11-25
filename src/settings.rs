@@ -158,6 +158,9 @@ pub struct Preferences {
     /// 保留空行: Markdown documents keep extra blank lines instead of collapsing them.
     #[serde(default = "keep_blank_lines_default")]
     pub keep_blank_lines: bool,
+    /// 随机打开: documents and folders to pick from (empty: every document).
+    #[serde(default)]
+    pub random_ids: Vec<String>,
     /// 模板: user-defined document templates, inserted at the caret.
     #[serde(default = "default_templates")]
     pub templates: Vec<crate::templates::Template>,
@@ -208,7 +211,7 @@ fn keep_blank_lines_default() -> bool { true }
 impl Default for Preferences {
     fn default() -> Self {
         let lang = system_lang();
-        Preferences { theme: String::new(), feishu: true, english: lang != Lang::Zh, language: lang.code().into(), remote_images: true, quick_hotkey: true, auto_update: true, appearance: String::new(), seen_version: String::new(), motion: String::new(), new_default: String::new(), last_new: String::new(), search_engine: String::new(), start_home: false, browser: String::new(), opaque_window: false, ui_font: String::new(), page_width: String::new(), review_new_per_day: 20, review_max_per_day: 200, review_retention: 90, ai_base_url: ai_base_default(), ai_model: ai_model_default(), ui_family: String::new(), doc_family: String::new(), migrate_later: 0, find_regex: false, backspace_to_title: true, keep_blank_lines: true, templates: default_templates() }
+        Preferences { theme: String::new(), feishu: true, english: lang != Lang::Zh, language: lang.code().into(), remote_images: true, quick_hotkey: true, auto_update: true, appearance: String::new(), seen_version: String::new(), motion: String::new(), new_default: String::new(), last_new: String::new(), search_engine: String::new(), start_home: false, browser: String::new(), opaque_window: false, ui_font: String::new(), page_width: String::new(), review_new_per_day: 20, review_max_per_day: 200, review_retention: 90, ai_base_url: ai_base_default(), ai_model: ai_model_default(), ui_family: String::new(), doc_family: String::new(), migrate_later: 0, find_regex: false, backspace_to_title: true, keep_blank_lines: true, random_ids: Vec::new(), templates: default_templates() }
     }
 }
 
@@ -376,7 +379,7 @@ pub(crate) fn watch_themes(cx: &mut Context<Workspace>) {
 // ---- the view
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Page { #[default] General, Appearance, Templates, Review, Sync, Shortcuts, Library, About }
+pub enum Page { #[default] General, Appearance, Templates, Review, Sync, Shortcuts, Random, Library, About }
 
 impl Page {
     fn title(self) -> &'static str {
@@ -387,6 +390,7 @@ impl Page {
             Page::Review => tr("复习", "Review"),
             Page::Sync => tr("同步", "Sync"),
             Page::Shortcuts => tr("快捷键", "Shortcuts"),
+            Page::Random => tr("随机打开", "Random"),
             Page::Library => tr("文档库", "Documents"),
             Page::About => tr("关于", "About"),
         }
@@ -399,6 +403,7 @@ impl Page {
             Page::Review => "review",
             Page::Sync => "restore",
             Page::Shortcuts => "keyboard",
+            Page::Random => "restore",
             Page::Library => "storage",
             Page::About => "info",
         }
@@ -406,7 +411,7 @@ impl Page {
 }
 
 /// The sidebar list, one evenly spaced run; `None` is 回收站 (its own view).
-const NAV: [Option<Page>; 9] = [Some(Page::General), Some(Page::Appearance), Some(Page::Templates), Some(Page::Review), Some(Page::Sync), Some(Page::Shortcuts), Some(Page::Library), None, Some(Page::About)];
+const NAV: [Option<Page>; 10] = [Some(Page::General), Some(Page::Appearance), Some(Page::Templates), Some(Page::Review), Some(Page::Sync), Some(Page::Shortcuts), Some(Page::Random), Some(Page::Library), None, Some(Page::About)];
 
 // ---- controls (switch on the accent, 30pt buttons, grouped rows)
 
@@ -1097,6 +1102,7 @@ impl Workspace {
             Page::Review => self.review_page(cx),
             Page::Sync => self.sync_page(cx),
             Page::Shortcuts => self.shortcut_settings(cx),
+            Page::Random => self.random_page(cx),
             Page::Library => self.library_page(cx),
             Page::About => self.about_page(cx),
         };
@@ -1167,6 +1173,8 @@ impl Workspace {
                     self.select("search-engine", vec!["Google", tr("百度", "Baidu"), "Bing", "DuckDuckGo"], sel,
                         |w, i, cx| w.set_pref(|p| p.search_engine = ["", "baidu", "bing", "duckduckgo"][i].into(), cx), cx)
                 }).into_any_element(),
+                row(tr("随机打开文档", "Random document"), desc(tr("从勾选的文件夹或文档中随机打开一篇；没有勾选时从全部文档中随机选择。", "Open a random document from the selected folders and documents; with none selected, from the whole library.")),
+                    button("random-settings", tr("选择范围", "Choose scope")).on_click(cx.listener(|w, _, _, cx| w.open_settings(Page::Random, cx)))).into_any_element(),
             ].into_iter().chain(links).collect()))
             .into_any_element()
     }
@@ -1191,6 +1199,88 @@ impl Workspace {
                 .relative()
                 .on_click(cx.listener(move |w, _, window, cx| w.toggle_font_menu(target, window, cx)))
         })
+    }
+
+    fn random_page(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = prefs();
+        let query = self.random_filter.read(cx).text.trim().to_lowercase();
+        let selected: std::collections::HashSet<&str> = p.random_ids.iter().map(String::as_str).collect();
+        let parent = |id: &str| self.entries.iter().find(|e| e.id == id).and_then(|e| e.meta.parent.clone());
+        let depth = |id: &str| {
+            let mut depth = 0usize;
+            let mut cur = parent(id);
+            while let Some(pid) = cur {
+                depth += 1;
+                cur = parent(&pid);
+            }
+            depth
+        };
+        let visible = |id: &str, label: &str| {
+            if !query.is_empty() { return label.to_lowercase().contains(&query); }
+            let mut cur = parent(id);
+            while let Some(pid) = cur {
+                if !self.expanded.contains(&pid) { return false; }
+                cur = parent(&pid);
+            }
+            true
+        };
+        let mut rows = vec![];
+        for (i, e) in self.entries.iter().enumerate() {
+            let folder = e.meta.folder.is_some();
+            let id = e.id.clone();
+            let on = selected.contains(id.as_str());
+            let label = if folder { e.meta.folder.clone().unwrap_or_else(|| e.title.clone()) } else { display_title(&e.title) };
+            if !visible(id.as_str(), &label) { continue; }
+            let indent = px(16. * depth(id.as_str()) as f32);
+            let expand = folder.then(|| {
+                let open = self.expanded.contains(&id);
+                let eid = id.clone();
+                div().id(("random-arrow", i)).size(px(18.)).flex_none().rounded(px(4.)).flex().items_center().justify_center().cursor_pointer()
+                    .hover(|s| s.bg(Theme::fill_hover()))
+                    .child(ui::icon(if open { "chevron-down" } else { "chevron-right" }, 13., Theme::text_caption()))
+                    .on_click(cx.listener(move |w, _, _, cx| {
+                        cx.stop_propagation();
+                        if !w.expanded.remove(&eid) { w.expanded.insert(eid.clone()); }
+                        cx.notify();
+                    }))
+            });
+            rows.push(div().id(("random-row", i)).h(px(42.)).px(px(16.)).flex().items_center().gap(px(8.)).cursor_pointer()
+                .hover(|s| s.bg(Theme::fill_hover()))
+                .child(div().w(indent.max(px(0.))).flex_none())
+                .children(expand)
+                .child(ui::icon(if folder { "folder" } else { "file-text" }, 16., Theme::icon()))
+                .child(div().flex_1().min_w_0().truncate().child(label))
+                .child(ui::checkbox(on))
+                .on_click(cx.listener(move |w, _, _, cx| {
+                    w.set_pref(|p| {
+                        if let Some(at) = p.random_ids.iter().position(|x| x == &id) { p.random_ids.remove(at); }
+                        else { p.random_ids.push(id.clone()); }
+                    }, cx)
+                }))
+                .into_any_element());
+        }
+        let summary = if p.random_ids.is_empty() {
+            tr("未选择时从全部文档中随机打开。", "With nothing selected, a random document from the whole library opens.").to_string()
+        } else {
+            format!("{} {}", tr("已选择", "Selected"), p.random_ids.len())
+        };
+        div().flex().flex_col().gap(px(16.))
+            .child(div().flex().items_center().gap(px(8.))
+                .child(div().flex_1().min_w_0().h(px(32.)).px(px(8.)).rounded(px(8.)).border_1().border_color(Theme::line_border()).bg(Theme::bg_body())
+                    .flex().items_center().child(self.random_filter.clone()))
+                .child(button("random-all", tr("全选", "Select all")).on_click(cx.listener(|w, _, _, cx| {
+                    let ids: Vec<String> = w.entries.iter().map(|e| e.id.clone()).collect();
+                    w.set_pref(|p| p.random_ids = ids, cx)
+                })))
+                .child(button("random-none", tr("清空", "Clear")).on_click(cx.listener(|w, _, _, cx| w.set_pref(|p| p.random_ids.clear(), cx)))))
+            .child(div().px(px(4.)).text_size(px(12.)).line_height(px(18.)).text_color(Theme::text_caption())
+                .child(format!("{} · {}", summary, tr("勾选文件夹会包含其中内容。", "Selecting a folder includes everything inside."))))
+            .child(if rows.is_empty() {
+                div().text_size(px(13.)).text_color(Theme::text_caption()).child(tr("没有匹配的文档", "No matching documents"))
+            } else {
+                group(None, rows)
+            })
+            .into_any_element()
     }
 
     fn appearance_page(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -2152,6 +2242,17 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "符号" => "Symbols",
         "最近" => "Recent",
         "随机" => "Random",
+        "随机打开" => "Random",
+        "随机打开文档" => "Random document",
+        "选择范围" => "Choose scope",
+        "已选择" => "Selected",
+        "没有可随机打开的文档" => "No documents to open",
+        "从勾选的文件夹或文档中随机打开一篇；没有勾选时从全部文档中随机选择。" => "Open a random document from the selected folders and documents; with none selected, from the whole library.",
+        "未选择时从全部文档中随机打开。" => "With nothing selected, a random document from the whole library opens.",
+        "勾选文件夹会包含其中内容。" => "Selecting a folder includes everything inside.",
+        "没有匹配的文档" => "No matching documents",
+        "不提醒" => "No reminder",
+        "准时" => "At start",
         "移除" => "Remove",
         "输入“/”快速插入内容" => "Type / to insert content",
         "点击更换图标" => "Click to change icon",
@@ -2515,6 +2616,12 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "编号前缀，例如 NO." => "Prefix, e.g. NO.",
         "美元" => "US dollar",
         "自动编号" => "Auto number",
+        "自动编排序号" => "Auto numbering",
+        "标题自动编号" => "Heading numbering",
+        "启用自动编号" => "Enable auto numbering",
+        "自动重新开始" => "Restart automatically",
+        "下级标题在高一级标题后重新从起始值编号。" => "Lower levels restart at their starting value after a higher-level heading.",
+        "起始序号" => "Starting numbers",
         "英镑" => "Pound sterling",
         "行高" => "Row height",
         "表单" => "Form",

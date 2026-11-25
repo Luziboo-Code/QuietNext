@@ -1094,7 +1094,7 @@ impl Editor {
             return;
         }
         self.items_key = Some(frame_key);
-        self.heading_orders = core::heading_orders(&self.core.doc.blocks);
+        self.heading_orders = core::heading_orders(&self.core.doc.blocks, &self.core.doc.numbering);
         let orders = &self.heading_orders;
         #[allow(clippy::too_many_arguments)]
         fn rows(list: &[Block], orders: &rustc_hash::FxHashMap<BlockId, String>, path: &mut Vec<usize>, lead: f32, seed: u64, items: &mut Vec<Item>, keys: &mut Vec<u64>) {

@@ -18,6 +18,15 @@ const HOUR_H: f32 = 44.;
 const MINI_CELL: f32 = 26.;
 const CHIP_H: f32 = 18.;
 const EVENT_COLORS: [u32; 6] = [0x2383e2, 0x0f7b6c, 0x6940a5, 0xd9730d, 0xe03e3e, 0xad1a72];
+/// Event reminder choices: seconds before the start.
+const REMINDER_CHOICES: [(Option<i64>, &str, &str); 6] = [
+    (None, "不提醒", "No reminder"),
+    (Some(0), "准时", "At start"),
+    (Some(5 * 60), "提前 5 分钟", "5 minutes before"),
+    (Some(15 * 60), "提前 15 分钟", "15 minutes before"),
+    (Some(3600), "提前 1 小时", "1 hour before"),
+    (Some(86_400), "提前 1 天", "1 day before"),
+];
 
 /// Sunday first, as Notion Calendar shows it.
 const WEEK: [(&str, &str); 7] = [("日", "Sun"), ("一", "Mon"), ("二", "Tue"), ("三", "Wed"), ("四", "Thu"), ("五", "Fri"), ("六", "Sat")];
@@ -60,6 +69,9 @@ pub struct Event {
     pub content: String,
     #[serde(default)]
     pub notes: String,
+    /// Notify this many seconds before the start (None: no reminder).
+    #[serde(default)]
+    pub reminder_before: Option<i64>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -87,6 +99,7 @@ pub struct Draft {
     all_day: bool,
     done: bool,
     color: u8,
+    reminder_before: Option<i64>,
     error: Option<SharedString>,
 }
 
@@ -300,6 +313,22 @@ impl Calendar {
             .filter(|e| day_of(e.start) <= day && day <= day_of(e.end) && self.matches(e.done))
             .cloned().collect();
         out.sort_by_key(|e| (!e.all_day, e.start, e.end));
+        out
+    }
+
+    /// Calendar reminders that fall in `(from, to]` (unix ms).
+    pub(crate) fn due_reminders(&self, from: i64, to: i64) -> Vec<(String, String)> {
+        let mut out = vec![];
+        for e in self.events.iter().filter(|e| !e.done) {
+            let Some(before) = e.reminder_before else { continue };
+            let start_ms = e.start * 1000 + if e.all_day { 9 * 3_600_000 } else { 0 };
+            let at = start_ms - before * 1000;
+            if from < at && at <= to {
+                let day = date_label(day_of(e.start));
+                let when = if e.all_day { format!("{day} 09:00") } else { format!("{day} {}", hm(minute_of_day(e.start))) };
+                out.push((e.title.clone(), when));
+            }
+        }
         out
     }
 
@@ -729,6 +758,17 @@ impl Workspace {
                 .child(div().flex_1().min_w_0().flex().flex_col().gap(px(3.))
                     .child(div().text_size(px(11.)).text_color(Theme::text_caption()).child(tr("结束", "End")))
                     .child(field(d.end_field.clone())))))
+            .child(div().flex().items_center().justify_between()
+                .child(div().text_size(px(11.)).text_color(Theme::text_caption()).child(tr("提醒", "Reminder")))
+                .child({
+                    let at = REMINDER_CHOICES.iter().position(|(v, _, _)| *v == d.reminder_before).unwrap_or(0);
+                    ui::secondary_button("cal-reminder", tr(REMINDER_CHOICES[at].1, REMINDER_CHOICES[at].2))
+                        .on_click(cx.listener(move |w, _, _, cx| {
+                            let next = (at + 1) % REMINDER_CHOICES.len();
+                            if let Some(d) = &mut w.calendar.draft { d.reminder_before = REMINDER_CHOICES[next].0; }
+                            cx.notify();
+                        }))
+                }))
             .child(div().flex().items_center().gap(px(8.))
                 .child(div().text_size(px(11.)).text_color(Theme::text_caption()).child(tr("颜色", "Color")))
                 .child(colors))
@@ -828,7 +868,8 @@ impl Workspace {
             }));
         }
         title.update(cx, |f, cx| f.select_all_text(cx));
-        self.calendar.draft = Some(Draft { id: event.map(|e| e.id), day, title: title.clone(), start_field, end_field, content, notes, all_day, done, color, error: None });
+        let reminder_before = event.as_ref().and_then(|e| e.reminder_before);
+        self.calendar.draft = Some(Draft { id: event.map(|e| e.id), day, title: title.clone(), start_field, end_field, content, notes, all_day, done, color, reminder_before, error: None });
         self.calendar._subs = subs;
         self.calendar.selected = day;
         self.calendar.cursor = month_of(day);
@@ -861,7 +902,8 @@ impl Workspace {
         let content = d.content.read(cx).text.clone();
         let notes = d.notes.read(cx).text.clone();
         let (id, color, day, done) = (d.id.clone(), d.color, d.day, d.done);
-        let event = Event { id: id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string()), title, start, end, all_day, color, done, content, notes };
+        let reminder_before = d.reminder_before;
+        let event = Event { id: id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string()), title, start, end, all_day, color, done, content, notes, reminder_before };
         match id {
             Some(id) => {
                 if let Some(old) = self.calendar.events.iter_mut().find(|e| e.id == id) { *old = event; }

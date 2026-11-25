@@ -105,7 +105,7 @@ fn page(doc: &Document, opts: &Options) -> String {
         let _ = write!(out, "<div class=\"icon\">{}</div>", esc(i));
     }
     let _ = write!(out, "<h1 class=\"title\">{}</h1>", esc(&title));
-    let w = Writer { opts, headings: crate::editor::core::heading_orders(&doc.blocks) };
+    let w = Writer { opts, headings: crate::editor::core::heading_orders(&doc.blocks, &doc.numbering) };
     w.blocks(&doc.blocks, 0, &mut out);
     out.push_str("</body></html>\n");
     out

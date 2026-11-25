@@ -1140,6 +1140,14 @@ impl Core {
         }
     }
 
+    /// 标题自动编号 settings (one undo step).
+    pub fn set_heading_numbering(&mut self, n: crate::model::HeadingNumbering) {
+        if self.doc.numbering == n { return; }
+        self.checkpoint(EditKind::Other);
+        self.break_coalescing();
+        self.doc.numbering = n;
+    }
+
     /// Fill in a 书签's title and description once fetched. Not an undo step:
     /// it is the same block the paste just made.
     pub fn refresh_bookmark(&mut self, id: BlockId, b: crate::model::Bookmark) -> bool {
@@ -3395,11 +3403,11 @@ pub fn ordered_number(siblings: &[Block], index: usize) -> u32 {
 /// depth, "1.2.3" below. Each container (page, callout, grid column, table
 /// cell) counts on its own, and its depths are the heading levels it uses,
 /// in order, so h2 + h4 number 1. / 1.1.
-pub fn heading_orders(blocks: &[Block]) -> HashMap<BlockId, String> {
-    fn gather<'a>(list: &'a [Block], run: &mut Vec<(BlockId, u8)>, containers: &mut Vec<&'a [Block]>) {
+pub fn heading_orders(blocks: &[Block], numbering: &HeadingNumbering) -> HashMap<BlockId, String> {
+    fn gather<'a>(list: &'a [Block], enabled: bool, run: &mut Vec<(BlockId, u8)>, containers: &mut Vec<&'a [Block]>) {
         for b in list {
             match &b.kind {
-                BlockKind::Heading { level, seq_auto: true } => run.push((b.id, *level)),
+                BlockKind::Heading { level, seq_auto } if *seq_auto || enabled => run.push((b.id, *level)),
                 BlockKind::Callout { .. } | BlockKind::Column { .. } => {
                     containers.push(&b.children);
                     continue;
@@ -3407,24 +3415,25 @@ pub fn heading_orders(blocks: &[Block]) -> HashMap<BlockId, String> {
                 BlockKind::Table(t) => t.rows.iter().flatten().for_each(|c| containers.push(&c.blocks)),
                 _ => {}
             }
-            gather(&b.children, run, containers);
+            gather(&b.children, enabled, run, containers);
         }
     }
     let mut out = HashMap::default();
     let mut containers = vec![blocks];
     while let Some(list) = containers.pop() {
         let mut run = vec![];
-        gather(list, &mut run, &mut containers);
+        gather(list, numbering.enabled, &mut run, &mut containers);
         let mut levels: Vec<u8> = run.iter().map(|r| r.1).collect();
         levels.sort_unstable();
         levels.dedup();
+        let starts: Vec<u32> = levels.iter().map(|l| numbering.start.get((*l as usize).saturating_sub(1)).copied().unwrap_or(1).max(1)).collect();
         let mut o: Vec<u32> = vec![];
         for (id, level) in run {
             let d = levels.iter().position(|l| *l == level).unwrap_or(0) + 1;
             if o.len() < d {
-                o.resize(d, 1);
+                while o.len() < d { o.push(starts[o.len()]); }
             } else {
-                o.truncate(d);
+                if numbering.restart { o.truncate(d); }
                 o[d - 1] += 1;
             }
             let s = if d == 1 { format!("{}.", o[0]) } else { o.iter().map(u32::to_string).collect::<Vec<_>>().join(".") };
@@ -4217,9 +4226,23 @@ mod tests {
             "<title>T</title><h2 seq=\"auto\">a</h2><h4 seq=\"auto\">b</h4><h4 seq=\"auto\">c</h4>",
             "<h2 seq=\"auto\">d</h2><h2>e</h2><callout><h3 seq=\"auto\">f</h3></callout><h4 seq=\"auto\">g</h4>"
         ));
-        let o = heading_orders(&c.doc.blocks);
+        let o = heading_orders(&c.doc.blocks, &c.doc.numbering);
         let n = |i| o.get(&id(&c, i)).map(String::as_str);
         assert_eq!([n(1), n(2), n(3), n(4), n(5), n(6), n(7)], [Some("1."), Some("1.1"), Some("1.2"), Some("2."), None, Some("1."), Some("2.1")]);
+    }
+
+    #[test]
+    fn heading_numbers_global_starts_and_restart() {
+        let c = doc("<title>T</title><h1>a</h1><h2>b</h2><h2>c</h2><h1>d</h1><h2>e</h2>");
+        let mut n = crate::model::HeadingNumbering { enabled: true, restart: true, start: [3, 5, 1, 1, 1, 1] };
+        let get = |n: &crate::model::HeadingNumbering, c: &Core| {
+            let o = heading_orders(&c.doc.blocks, n);
+            [id(c, 1), id(c, 2), id(c, 3), id(c, 4), id(c, 5)].map(|i| o.get(&i).cloned().unwrap_or_default())
+        };
+        let want = |v: [&str; 5]| v.map(str::to_string);
+        assert_eq!(get(&n, &c), want(["3.", "3.5", "3.6", "4.", "4.5"]));
+        n.restart = false;
+        assert_eq!(get(&n, &c), want(["3.", "3.5", "3.6", "4.", "4.7"]));
     }
 
     #[test]

@@ -24,7 +24,7 @@ use web_time::Instant;
 const SAVE_DELAY: Duration = Duration::from_millis(500);
 const SAVE_MAX_DELAY: Duration = Duration::from_secs(2);
 
-actions!(workspace, [NewDoc, OpenFile, OpenFolder, ImportDoc, ImportFolder, ToggleSidebar, FocusSearch, FindInDoc, ReplaceInDoc, OpenSettings, OpenAbout, CheckForUpdates, GoHome, CloseWindow, Quit,
+actions!(workspace, [NewDoc, OpenFile, OpenFolder, ImportDoc, ImportFolder, ToggleSidebar, FocusSearch, FindInDoc, ReplaceInDoc, OpenSettings, OpenAbout, CheckForUpdates, GoHome, RandomDoc, CloseWindow, Quit,
     ReplayOnboarding, HideApp, HideOthers, ShowAll, Minimize, Zoom, ToggleFullScreen, SplitView]);
 
 /// The menu bar, in the interface language.
@@ -109,6 +109,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-o", OpenFile, None),
         KeyBinding::new("cmd-shift-o", OpenFolder, None),
         KeyBinding::new("cmd-alt-home", GoHome, None),
+        KeyBinding::new("cmd-alt-r", RandomDoc, None),
         KeyBinding::new("cmd-w", CloseWindow, None),
         KeyBinding::new("cmd-]", ToggleSidebar, None),
         KeyBinding::new("cmd-\\", ToggleSidebar, None),
@@ -374,6 +375,7 @@ pub struct Workspace {
     pub font_anchors: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<&'static str, Bounds<Pixels>>>>,
     /// 快捷键's filter field.
     pub settings_filter: Entity<TextField>,
+    pub random_filter: Entity<TextField>,
     /// 设置 › 复习 › AI 配置.
     pub ai_base_field: Entity<TextField>,
     pub ai_model_field: Entity<TextField>,
@@ -485,6 +487,8 @@ pub struct Workspace {
     pub trash_menu: Option<(String, Point<Pixels>, Anchor)>,
     /// The toast and when it appeared.
     pub toast: Option<(ToastKind, SharedString, Instant)>,
+    /// 日期提醒 / 日历提醒 shown inside the app.
+    pub reminder_popup: Option<(SharedString, SharedString)>,
     toast_task: Option<Task<()>>,
     /// Folded sidebar sections: 置顶, 我的文档.
     pub folded: [bool; 3],
@@ -518,16 +522,6 @@ pub struct Workspace {
     _subs: Vec<Subscription>,
 }
 
-
-/// A macOS notification (only logged when scripted).
-fn notify_system(title: &str, body: &str) {
-    if crate::devtools::scripted() || cfg!(target_family = "wasm") {
-        return eprintln!("notification: {title} / {body}");
-    }
-    let q = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
-    let script = format!("display notification \"{}\" with title \"{}\"", q(body), q(title));
-    std::thread::spawn(move || std::process::Command::new("osascript").arg("-e").arg(script).status());
-}
 
 impl Workspace {
     /// Make the other pane the active one: the window's document fields and the
@@ -709,6 +703,11 @@ impl Workspace {
             f.placeholder_color = Theme::text_disabled();
             f
         });
+        let random_filter = cx.new(|cx| {
+            let mut f = TextField::new(crate::settings::tr("搜索文档", "Search documents"), cx);
+            f.placeholder_color = Theme::text_disabled();
+            f
+        });
         let p = crate::settings::prefs();
         let ai_base_field = cx.new(|cx| {
             let mut f = TextField::new("https://api.openai.com/v1", cx);
@@ -777,6 +776,7 @@ impl Workspace {
         });
         let subs = vec![
             cx.subscribe(&settings_filter, |_, _, ev: &TextFieldEvent, cx| if matches!(ev, TextFieldEvent::Changed) { cx.notify(); }),
+            cx.subscribe(&random_filter, |_, _, ev: &TextFieldEvent, cx| if matches!(ev, TextFieldEvent::Changed) { cx.notify(); }),
             cx.subscribe_in(&comment_field, window, |this, _, ev: &TextFieldEvent, _, cx| {
                 if matches!(ev, TextFieldEvent::Submit | TextFieldEvent::Cancel) { this.finish_comment(cx); }
             }),
@@ -907,6 +907,7 @@ impl Workspace {
             font_menu: None,
             font_anchors: Default::default(),
             settings_filter,
+            random_filter,
             ai_base_field,
             ai_model_field,
             ai_key_field,
@@ -980,6 +981,7 @@ impl Workspace {
             trash: vec![],
             trash_menu: None,
             toast: None,
+            reminder_popup: None,
             toast_task: None,
             mode_menu: false,
             mode_btn_bounds: Rc::new(Cell::new(None)),
@@ -1447,6 +1449,27 @@ impl Workspace {
         crate::ui::toast_el(*kind, msg, *t0, window)
     }
 
+    /// 日期提醒 / 日历提醒: a card in the window's top-right corner.
+    fn render_reminder_popup(&self, cx: &Context<Self>) -> Option<AnyElement> {
+        let (title, body) = self.reminder_popup.as_ref()?;
+        Some(
+            deferred(
+                div().id("reminder-popup").absolute().top(px(64.)).right(px(22.)).w(px(330.)).occlude()
+                    .rounded(px(12.)).border_1().border_color(Theme::line_border()).bg(crate::theme::raised(Theme::bg_body()))
+                    .shadow(theme::shadow_s4_down()).p(px(14.)).flex().flex_col().gap(px(8.))
+                    .child(div().flex().items_center().gap(px(8.))
+                        .child(icon("calendar", 16., Theme::primary()))
+                        .child(div().flex_1().min_w_0().truncate().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).child(title.clone()))
+                        .child(div().id("reminder-close").size(px(22.)).rounded(px(5.)).flex().items_center().justify_center().cursor_pointer()
+                            .hover(|s| s.bg(Theme::fill_hover())).child(icon("x", 13., Theme::icon()))
+                            .on_click(cx.listener(|w, _, _, cx| { w.reminder_popup = None; cx.notify(); }))))
+                    .child(div().text_size(px(12.)).line_height(px(18.)).text_color(Theme::text_caption()).child(body.clone())),
+            )
+            .with_priority(25)
+            .into_any_element(),
+        )
+    }
+
     /// 重命名: the row's title turns into an input; Enter or clicking away saves, Esc cancels.
     pub fn start_rename(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(title) = self.entries.iter().find(|e| e.id == id).map(|e| e.title.trim().to_string()) else { return };
@@ -1604,17 +1627,51 @@ impl Workspace {
         cx.notify();
     }
 
+    /// 随机打开: one document from the selected folders/documents (or the whole library).
+    pub(crate) fn open_random_doc(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let selected: std::collections::HashSet<String> = crate::settings::prefs().random_ids.into_iter().collect();
+        let parent: std::collections::HashMap<&str, Option<&str>> = self.entries.iter().map(|e| (e.id.as_str(), e.meta.parent.as_deref())).collect();
+        let under = |id: &str| {
+            let mut cur = Some(id);
+            while let Some(at) = cur {
+                if selected.contains(at) { return true; }
+                cur = parent.get(at).copied().flatten();
+            }
+            false
+        };
+        let mut docs: Vec<String> = self.entries.iter()
+            .filter(|e| e.meta.folder.is_none())
+            .filter(|e| selected.is_empty() || under(e.id.as_str()))
+            .map(|e| e.id.clone())
+            .collect();
+        if docs.len() > 1 && let Some(cur) = &self.current { docs.retain(|id| id != cur); }
+        if docs.is_empty() {
+            return self.show_toast_kind(crate::ui::ToastKind::Info, crate::settings::tr("没有可随机打开的文档", "No documents to open"), cx);
+        }
+        let pick = (crate::time::now_ms() as usize) % docs.len();
+        let id = docs.swap_remove(pick);
+        self.open(&id, window, cx);
+    }
+
     fn check_reminders(&mut self, from: i64, to: i64, cx: &mut Context<Self>) {
         // The open document's reminders are read live (unsaved edits too).
         let open = self.editor.as_ref().map(|e| e.read(cx).core.doc.reminders());
+        let mut due: Option<(String, String)> = None;
         for e in &self.entries {
             let rs = match &open {
                 Some(rs) if self.current.as_deref() == Some(e.id.as_str()) => rs,
                 _ => &e.reminders,
             };
             for r in rs.iter().filter(|r| r.should_notify && from < r.notify && r.notify <= to) {
-                notify_system(&display_title(&e.title), &crate::editor::reminder::notification(r));
+                due.get_or_insert_with(|| (display_title(&e.title), crate::editor::reminder::notification(r)));
             }
+        }
+        for (title, when) in self.calendar.due_reminders(from, to) {
+            due.get_or_insert((title, when));
+        }
+        if let Some((title, body)) = due {
+            self.reminder_popup = Some((title.into(), body.into()));
+            cx.notify();
         }
     }
 
@@ -2362,6 +2419,7 @@ impl Render for Workspace {
         let pref_menu = self.render_pref_menu(cx);
         let font_menu = self.render_font_menu(cx);
         let toast = self.render_toast(window);
+        let reminder_popup = self.render_reminder_popup(cx);
         let forced_update = crate::update::prompt(window, cx);
         let mode_menu = self.render_mode_menu(cx);
         // 分屏: the other pane's "…" menu hangs from its own header button.
@@ -2456,6 +2514,7 @@ impl Render for Workspace {
             .on_action(cx.listener(|w, _: &OpenAbout, _, cx| w.open_settings(crate::settings::Page::About, cx)))
             .on_action(cx.listener(|w, _: &CheckForUpdates, _, cx| { w.open_settings(crate::settings::Page::About, cx); crate::update::check(true, cx); }))
             .on_action(cx.listener(|w, _: &GoHome, _, cx| w.show_view(View::Home, cx)))
+            .on_action(cx.listener(|w, _: &RandomDoc, window, cx| w.open_random_doc(window, cx)))
             .on_action(cx.listener(|w, _: &NewDoc, window, cx| w.new_doc(window, cx)))
             .on_action(cx.listener(|w, _: &ImportDoc, window, cx| w.open_import(window, cx)))
             .on_action(cx.listener(|w, _: &OpenFile, window, cx| w.open_file_dialog(window, cx)))
@@ -2588,6 +2647,7 @@ impl Render for Workspace {
             .children(place_menu)
             .children(forced_update)
             .children(toast)
+            .children(reminder_popup)
             // Over everything, toasts included, until its last page is done.
             .when_some(self.onboarding.clone(), |d, o| d.child(deferred(div().id("onboarding-cover").absolute().inset_0().occlude().child(o)).with_priority(30)))
     }
