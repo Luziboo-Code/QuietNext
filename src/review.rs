@@ -1050,13 +1050,15 @@ fn generate_ai(base: &str, key: &str, model: &str, source: &str, count: u32) -> 
     let header = std::env::temp_dir().join(format!("quiet-next-ai-{}.hdr", uuid::Uuid::new_v4()));
     std::fs::write(&header, format!("Authorization: Bearer {key}\n")).map_err(|e| format!("写入请求头失败：{e}"))?;
     let header_arg = format!("@{}", header.display());
-    let mut child = match std::process::Command::new("curl")
-        .arg("-sS").arg("--max-time").arg("120").arg("-X").arg("POST").arg(&url)
+    let mut cmd = std::process::Command::new("curl");
+    cmd.arg("-sS").arg("--max-time").arg("120").arg("-X").arg("POST").arg(&url)
         .arg("-H").arg("Content-Type: application/json")
         .arg("-H").arg(&header_arg)
         .arg("--data-binary").arg("@-")
-        .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
-        .spawn() {
+        .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    #[cfg(target_os = "windows")]
+    { use std::os::windows::process::CommandExt; cmd.creation_flags(0x0800_0000); }
+    let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => { let _ = std::fs::remove_file(&header); return Err(format!("无法启动 curl：{e}")) }
     };

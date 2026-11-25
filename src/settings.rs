@@ -1205,33 +1205,33 @@ impl Workspace {
         let p = prefs();
         let query = self.random_filter.read(cx).text.trim().to_lowercase();
         let selected: std::collections::HashSet<&str> = p.random_ids.iter().map(String::as_str).collect();
-        let parent = |id: &str| self.entries.iter().find(|e| e.id == id).and_then(|e| e.meta.parent.clone());
-        let depth = |id: &str| {
-            let mut depth = 0usize;
-            let mut cur = parent(id);
-            while let Some(pid) = cur {
-                depth += 1;
-                cur = parent(&pid);
+        let mut by_parent: std::collections::HashMap<Option<&str>, Vec<&crate::store::Entry>> = std::collections::HashMap::new();
+        for e in &self.entries { by_parent.entry(e.meta.parent.as_deref()).or_default().push(e); }
+        fn walk<'a>(
+            parent: Option<&str>, depth: usize,
+            by_parent: &std::collections::HashMap<Option<&str>, Vec<&'a crate::store::Entry>>,
+            expanded: &std::collections::HashSet<String>, query: &str,
+            out: &mut Vec<(&'a crate::store::Entry, usize)>,
+        ) {
+            let Some(children) = by_parent.get(&parent) else { return };
+            for e in children {
+                let folder = e.meta.folder.is_some();
+                let label = if folder { e.meta.folder.as_deref().unwrap_or(&e.title) } else { &e.title };
+                if query.is_empty() || label.to_lowercase().contains(query) { out.push((e, depth)); }
+                if folder && (!query.is_empty() || expanded.contains(&e.id)) {
+                    walk(Some(e.id.as_str()), depth + 1, by_parent, expanded, query, out);
+                }
             }
-            depth
-        };
-        let visible = |id: &str, label: &str| {
-            if !query.is_empty() { return label.to_lowercase().contains(&query); }
-            let mut cur = parent(id);
-            while let Some(pid) = cur {
-                if !self.expanded.contains(&pid) { return false; }
-                cur = parent(&pid);
-            }
-            true
-        };
+        }
+        let mut flat = vec![];
+        walk(None, 0, &by_parent, &self.expanded, &query, &mut flat);
         let mut rows = vec![];
-        for (i, e) in self.entries.iter().enumerate() {
+        for (i, (e, level)) in flat.into_iter().enumerate() {
             let folder = e.meta.folder.is_some();
             let id = e.id.clone();
             let on = selected.contains(id.as_str());
             let label = if folder { e.meta.folder.clone().unwrap_or_else(|| e.title.clone()) } else { display_title(&e.title) };
-            if !visible(id.as_str(), &label) { continue; }
-            let indent = px(16. * depth(id.as_str()) as f32);
+            let indent = px(16. * level as f32);
             let expand = folder.then(|| {
                 let open = self.expanded.contains(&id);
                 let eid = id.clone();

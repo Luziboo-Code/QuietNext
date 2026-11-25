@@ -1,181 +1,145 @@
-<h1 align="center">Quiet.md</h1>
+<h1 align="center">QuietNext</h1>
 
 <p align="center">
-  <b>Fast, quiet notes that live on your computer.</b><br>
-  A native notes app built with Rust + GPUI: real folders, Markdown that formats itself, and a whiteboard inside your notes. Free and open source.
+  <b>本地优先、原生快速的多维笔记与知识库</b><br>
+  A local-first, native workspace for notes, structured data and visual thinking.
 </p>
 
 <p align="center">
-  English · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a>
+  <a href="https://github.com/Luziboo-Code/QuietNext/releases/latest"><img src="https://img.shields.io/github/v/release/Luziboo-Code/QuietNext?label=release&color=2f6feb" alt="Latest release"></a>
+  <a href="https://github.com/Luziboo-Code/QuietNext/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Luziboo-Code/QuietNext/ci.yml?branch=main&label=CI" alt="CI"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platforms">
+  <img src="https://img.shields.io/badge/built%20with-Rust%20%2B%20GPUI-dea584?logo=rust" alt="Rust and GPUI">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Luziboo-Code/QuietNext?color=green" alt="MIT license"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/s1dashu/quiet-md/releases/latest"><img src="https://img.shields.io/github/v/release/s1dashu/quiet-md?label=release&color=2f6feb" alt="Latest release"></a>
-  <a href="https://github.com/s1dashu/quiet-md/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/s1dashu/quiet-md/ci.yml?branch=main&label=CI" alt="CI status"></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="macOS, Windows and Linux">
-  <img src="https://img.shields.io/badge/built%20with-Rust%20%2B%20GPUI-dea584?logo=rust" alt="Built with Rust and GPUI">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/s1dashu/quiet-md?color=green" alt="MIT license"></a>
-  <img src="https://img.shields.io/badge/status-beta-orange" alt="Beta">
+  <a href="https://github.com/Luziboo-Code/QuietNext/releases/latest"><b>下载</b></a> ·
+  <a href="#功能">功能</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#开发">开发</a> ·
+  <a href="docs/ARCHITECTURE.md">架构</a>
 </p>
 
-<p align="center">
-  <a href="https://download.quiet.md/latest/quiet-md-macos-arm64.zip"><img src="docs/images/download-macos.svg" height="56" alt="Download for macOS"></a>
-  &nbsp;
-  <a href="https://download.quiet.md/latest/quiet-md-windows-x64-setup.exe"><img src="docs/images/download-windows.svg" height="56" alt="Download for Windows"></a>
-  &nbsp;
-  <a href="https://download.quiet.md/latest/quiet-md-x86_64.AppImage"><img src="docs/images/download-linux.svg" height="56" alt="Download for Linux"></a>
-</p>
+---
 
-<p align="center">
-  <a href="https://quiet.md/?lang=en"><b>Website</b></a> ·
-  <a href="#download"><b>Download</b></a> ·
-  <a href="#features">Features</a> ·
-  <a href="#performance">Performance</a> ·
-  <a href="CONTRIBUTING.md">Contributing</a>
-</p>
+## 简介
 
-<p align="center">
-  <img src="docs/images/readme-home.webp" width="100%" alt="Quiet.md on a pixel-art meadow: the sidebar lists folders, and Home shows each folder as a stack of note cards with pictures.">
-</p>
+QuietNext 是一款用 **Rust + GPUI** 原生绘制的本地笔记应用。它把富文本文档、Markdown、多维数据表、画板、日历和提醒放在同一个工作区中，所有内容都保存在你自己的电脑上。
 
-> [!NOTE]
-> Quiet.md is in **beta** and changing quickly. If you hit a bug or have an idea, please [open an issue](https://github.com/s1dashu/quiet-md/issues) — or better, send a pull request.
+无需账号，默认不联网，不依赖 Electron 或 WebView。侧栏中的每个文件夹都是磁盘上的真实文件夹，每篇文档都是可独立保存和同步的文件。停止使用 QuietNext 后，你的数据仍然保持原样。
 
-## Why Quiet.md
+## 功能
 
-**📁 Your notes are just files.** No account, no cloud, and nothing goes over the network by default (the optional update check aside). Every folder in the sidebar is a real folder on your disk, and every note is a file named after its title: `.md` for Markdown, `.xml` for rich documents. Sync them with iCloud, Git or anything you like. If you ever stop using Quiet.md, your files stay right where they are.
+### 写作与文档
 
-**⚡ Native, and fast.** The whole interface is drawn on the GPU by Rust and [GPUI](https://www.gpui.rs/). No Electron, no WebView. In a one-million-character note, typing takes about 5 ms a frame, and a 120 Hz display allows 8.3.
+- 富文本文档与 Markdown 文档并存，支持标题、列表、待办、引用、高亮块、分栏、表格、代码块、LaTeX 公式、图片、附件与封面。
+- Markdown 快捷输入与 `/` 插入菜单。
+- 字体颜色、背景颜色、标题自动编号，以及可配置的编号起始值。
+- 文本批注：选中文字后添加批注，在右侧面板中编辑、管理或批量删除。
+- 文档内查找替换、全文搜索、分屏编辑、模板、版本历史和回收站。
+- 文件卡片双击使用系统默认程序打开；粘贴文件路径时可选择「粘贴为文本」或「导入文件」。
+- 粘贴网址时可选择「粘贴为文本」或「粘贴为书签」，书签卡片会自动抓取网页标题与描述。
 
-**✍️ Write and draw in one place.** Type `#`, `-`, `[]` or `>` and Markdown formats itself. When words are not enough, put a whiteboard right in the note. Rich notes are stored in the Feishu (Lark) DocxXML format, so pasting from Feishu or a web page keeps its structure.
+### 多维数据表
 
-## Features
+- 表格、看板、画廊、甘特/时间轴四种视图。
+- 自定义属性与字段类型，支持筛选、分组、排序、统计和行填色。
+- 看板按单选/人员字段分列；画廊与时间轴可直接打开记录详情。
+- 数据保存在独立的 `.sqlite` 文件中，可导入和导出 CSV。
 
-### Write
+### 画板
 
-<p align="center">
-  <img src="docs/images/readme-write.webp" width="100%" alt="A long note open in Quiet.md, with headings, inline math and a table of ion concentrations.">
-</p>
+- 内置基于 Excalidraw 的白板：图形、箭头、自由绘制、文字、便签、分区和图片。
+- 可作为页面中的块，也可保存为独立的 `.excalidraw` 文件。
+- 支持缩放、拖拽和大规模图形场景。
 
-Headings, lists, to-dos, quotes, callouts, columns, tables with merged cells, code with syntax highlighting, LaTeX math, images, files and covers. Markdown shortcuts work as you type, and the `/` menu has everything else. Mention another note to link it; the other note lists its backlinks.
+### 组织与同步
 
-### Draw
+- 真实文件夹与嵌套目录，文档可置顶、收藏、移动和批量管理。
+- WebDAV 与 S3 兼容对象存储同步，支持手动上传、下载和双向同步。
+- 可选每五分钟自动同步；冲突保留云端副本，覆盖前备份本地文件。
+- 随机打开文档：在设置中勾选文档或文件夹，按 `Ctrl+Alt+R` 随机打开一篇。
+- 日历活动与日期提醒；提醒在应用内右上角弹窗显示。
+- 多语言界面、内置主题和自定义主题。
 
-<p align="center">
-  <img src="docs/images/readme-board.webp" width="100%" alt="A board in Quiet.md: pictures and maps laid out with handwritten labels, boxes and connecting arrows.">
-</p>
+## 下载
 
-Boards are a whiteboard ported from Excalidraw: shapes, arrows that stay attached, freehand, text, sticky notes, frames and pictures. Put one inside a note, or keep it as an `.excalidraw` file that excalidraw.com opens. Zoom with a trackpad pinch; a board with 10,000 shapes stays smooth.
+最新版本与安装包：
 
-### Organize in real folders
+**https://github.com/Luziboo-Code/QuietNext/releases/latest**
 
-Home shows each folder as a stack of its pages. Hold a note over a folder and it opens for you; folders go inside folders, and moves can be undone. Pin and favorite notes, search every title and line with `⌘ J`, and find and replace within a note, with regular expressions if you like. Deleted notes wait in the Trash. Markdown files and folders elsewhere on your computer can be opened under **Files on this computer** and edited where they are.
-
-### Bring your notes
-
-<p align="center">
-  <img src="docs/images/readme-import.webp" width="100%" alt="The first-launch screen of Quiet.md, offering to import an Obsidian vault it found.">
-</p>
-
-On first launch, Quiet.md looks for your Obsidian, Logseq, iA Writer and Typora libraries and copies them in, leaving the originals alone. Obsidian `[[wikilinks]]` keep working: click one to open the note it points to. Later, drag Markdown files and folders onto Home or straight into a sidebar folder. Notes go out again as Markdown or PDF, or straight to the printer.
-
-### And more
-
-- **Version history**: every note keeps snapshots as it saves (20 by default, up to 30). Open one to see what changed in place, restore it in one click, or give it a name.
-- **Split view**: `…` › Open in split view (or `⌘⇧\`) puts two notes side by side in one window, each edited and saved on its own.
-- **Templates**: write your own in Settings › Templates, then insert one with `⌥⌘P`. `{{date}}`, `{{time}}`, `{{weekday}}`, `{{title}}` and `{{clipboard}}` are filled in as it lands.
-- **Quick notes**: on macOS, a global shortcut (`⌥ Space` by default) opens a small note window over any app.
-- **Your look**: four built-in styles — Craft, Feishu, Notion and Obsidian — each with a dark variant, or your own CSS ([docs/THEMES.md](docs/THEMES.md)). Choose the interface and document fonts.
-- **Your keys**: press `⌘ /` to see every shortcut, and rebind any of them. On Windows and Linux, Ctrl stands in for ⌘ and Alt for ⌥.
-- **Your language**: English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Spanish, French, Arabic and Turkish. Arabic text joins its letters and runs right to left.
-- **Housekeeping**: Settings › Documents finds images and files no note uses any more and moves them out once you confirm.
-- **Updates**: new versions install from inside the app after their signature is verified. Automatic checks can be turned off.
-
-## Download
-
-<p align="center">
-  <a href="https://download.quiet.md/latest/quiet-md-macos-arm64.zip"><img src="docs/images/download-macos.svg" height="56" alt="Download for macOS"></a>
-  &nbsp;
-  <a href="https://download.quiet.md/latest/quiet-md-windows-x64-setup.exe"><img src="docs/images/download-windows.svg" height="56" alt="Download for Windows"></a>
-  &nbsp;
-  <a href="https://download.quiet.md/latest/quiet-md-x86_64.AppImage"><img src="docs/images/download-linux.svg" height="56" alt="Download for Linux"></a>
-</p>
-
-| Platform | Package | Requirements |
+| 平台 | 安装包 | 系统要求 |
 |---|---|---|
-| **macOS** (Apple Silicon) | [quiet-md-macos-arm64.zip](https://download.quiet.md/latest/quiet-md-macos-arm64.zip) | macOS 13 or later |
-| **Windows** (x64) | [quiet-md-windows-x64-setup.exe](https://download.quiet.md/latest/quiet-md-windows-x64-setup.exe) | Windows 10 version 1809 or later |
-| **Linux** (x86_64, experimental) | [quiet-md-x86_64.AppImage](https://download.quiet.md/latest/quiet-md-x86_64.AppImage) | glibc 2.35 or later (Ubuntu 22.04 and newer) |
-| **macOS** (Intel) | [quiet-md-macos-x86_64.zip](https://download.quiet.md/latest/quiet-md-macos-x86_64.zip) | macOS 13 or later |
+| Windows x64 | `QuietNext-<version>-windows-x64-setup.exe` | Windows 10 1809 或更高 |
+| macOS | 从源码构建 | macOS 13 或更高 |
+| Linux | 从源码构建 | 现代 x86_64 桌面环境 |
 
-- **macOS**: unzip and drag `quiet.md.app` into Applications. The app is signed and notarized by Apple.
-- **Windows**: run the installer. By default it installs for the current user only, and uninstalling never deletes your notes. If SmartScreen appears on first launch, click **More info → Run anyway**.
-- **Linux** (experimental): `chmod +x quiet-md-*.AppImage` and run it; without FUSE, add `--appimage-extract-and-run`. AppImage 0.1.10 and later support in-app updates; older Linux versions need a one-time manual install. Interactive testing so far covers Omarchy on Wayland; see the [Linux notes](CONTRIBUTING.md#linux-experimental).
+### Windows 安装
 
-You can also download from [Quiet.md](https://quiet.md/?lang=en). Every release and its SHA-256 checksums are on [GitHub Releases](https://github.com/s1dashu/quiet-md/releases).
+运行安装程序即可，无需管理员权限。默认安装到当前用户目录，并创建开始菜单快捷方式；卸载不会删除你的笔记库。
 
-On first launch, Quiet.md asks for the interface language, where to keep your library and the quick-note shortcut, and offers to copy in notes from Obsidian, Logseq, iA Writer or Typora. An empty library gets a **Getting started** guide — a ten-minute tour of the main features. Existing notes are never overwritten.
+如果首次运行时出现 SmartScreen 提示，选择「更多信息 → 仍要运行」。
 
-## Performance
+## 数据与隐私
 
-Frame processing time over 100 consecutive operations in a mixed document of **1 million characters** and 549 chapters:
+- 默认文档库位于 `文档/QuietNext`，可在首次启动时更改。
+- 元数据、历史版本和同步配置保存在文档库内的 `.quiet/` 目录。
+- 应用不包含遥测，不会上传文档内容。
+- 网络访问仅发生在你主动使用同步、远程图片、书签抓取或更新检查时。
+- WebDAV/S3 凭据只保存在本机配置中。
 
-| Operation | P50 | P95 |
-|---|---:|---:|
-| ⌨️ Typing | **5.06 ms** | 5.78 ms |
-| ⌫ Backspace | **4.99 ms** | 5.55 ms |
-| 🖱️ Scrolling | **2.08 ms** | 4.14 ms |
+## 快速开始
 
-A 120 Hz display gives each frame 8.3 ms. Even at P95 on a million-character document, there is headroom left.
+### 运行发布版
 
-| | |
-|---|---|
-| macOS download | ~18 MB |
-| Windows installer | ~14 MB |
-| Runtime | No WebView, no Electron, no background services |
+从 [Releases](https://github.com/Luziboo-Code/QuietNext/releases/latest) 下载 Windows 安装包并安装。首次启动可设置语言、文档库位置和快捷键。
 
-<sub>Apple M5 Pro / 48 GiB, macOS 26.5, release build. Methodology and scripts to reproduce: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).</sub>
+### 从源码运行
 
-## Contributors
+需要 Rust stable 工具链；Windows 还需要 Visual Studio Build Tools 与 Windows SDK。
 
-Thanks to everyone who has helped build Quiet.md. Issues and pull requests are welcome: building, testing and code conventions are in [CONTRIBUTING.md](CONTRIBUTING.md).
+```sh
+git clone https://github.com/Luziboo-Code/QuietNext.git
+cd QuietNext
+cargo build --release --bin QuietNext
+```
 
-[![Contributors](https://raw.githubusercontent.com/s1dashu/quiet-md/contributors-assets/docs/images/contributors.svg?v=1)](https://github.com/s1dashu/quiet-md/graphs/contributors)
+生成 Windows 安装包：
 
-## Recent updates
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging/windows/setup/build.ps1
+```
 
-- **0.1.18** (Nov 24): The comments panel gains a Manage button; it reveals round checkboxes for selecting and deleting several comments at once. The comment icon in the selection toolbar now renders correctly.
-- **0.1.17** (Nov 24): Add comments: select text, use the toolbar's comment button, then edit or delete them in the right panel; select several to delete at once. The full slash menu returns in Markdown documents.
-- **0.1.16** (Nov 24): Sync the whole library and its `.quiet` settings to WebDAV or S3-compatible storage. Upload, download, sync both ways, or sync automatically every five minutes.
-- **0.1.15** (Nov 23): A new Q app icon. Lock editing now has a shortcut (⌘⇧K on macOS, Ctrl+Shift+K on Windows). Export as image captures the whole page, with its side margins.
-- **0.1.14** (Nov 21): find and replace with regular expressions. Obsidian `[[wikilinks]]` open the note they point to. A Turkish interface, and Arabic laid out right to left. Choose the interface and document fonts, and clear out images and files no note uses. Search keeps up with large libraries, and deleting many notes is quicker. A setting for whether Backspace returns to the title; on Windows and Linux, Copy as Markdown is now Ctrl+Shift+M. Split view puts two notes side by side in one window. Templates: write your own and insert one with ⌥⌘P.
-- **0.1.13** (Nov 17): boards — a whiteboard ported from Excalidraw, as a block in a note or a standalone `.excalidraw` file, fast with 10,000 shapes. Version history for every note (… › Version history). French and Arabic interfaces. Copy as Markdown, copy a file's path, and switch the library folder in Settings. Pasted web images are saved into the library. Less memory on picture-heavy pages and smoother sidebar scrolling.
-- **0.1.12** (Nov 14): drag files from Finder, or a file from Files on this computer, straight into a sidebar folder or between rows; the whole page lights up as a drop target. Redesigned Home cards with squircle corners, an Open in Finder menu, breadcrumbs that start at My documents, a minimum window width that keeps room for the note, and a solid sidebar in full screen. Fixes a hang when creating a document in a folder.
-- **0.1.11** (Nov 13): the library is now real folders, with files named by title; older libraries move over automatically, with a backup. A new first launch that sets the language, library location and quick-note shortcut and imports notes from Obsidian and other Markdown apps. Japanese, Spanish and Korean interfaces; display math in Markdown; documents reopen where you left off; faster launch and lower memory use.
-- **0.1.10** (Nov 10): choose a document type from the New menu, scroll wide tables horizontally, preserve Markdown column alignment, and keep the caret visible in long fields.
-- **0.1.9** (Nov 8): fix Cmd+Q on macOS, unresponsive window controls on Windows, and text selection hidden by highlight colors.
-- **0.1.8** (Nov 9): edit local Markdown files in place, import folders while keeping `.md`, and organize notes in nested folders with drag and undo. Lower image and preview memory use; steadier table resizing and refined menus. First launch chooses a supported system language. Experimental Linux AppImage packaging.
-- **0.1.7** (Nov 6): safer multi-window saving, conflict recovery and disk writes; restricted export file access; Markdown exports keep inline attachments. Fixed Chinese input deletion with Weasel on Windows.
-- **0.1.6** (Nov 6): smoother window switching and typing, wider tables, regular saves during continuous typing, and Option+Space for global quick notes on macOS. Windows adds image paste, PDF export and printing, with corrected word deletion.
-- **0.1.5** (Nov 5): the app is now called Quiet.md; your library and notes stay where they were.
-  - Manage several documents at once from Home: duplicate, move or delete them together.
-  - Empty the Trash in one step; arrow keys move through the insert menu's icons; deleting every document no longer creates an empty one.
-  - After an in-app update, the sidebar shows once what changed in the new version.
-  - Windows: shortcuts and the built-in guide read Ctrl / Alt, and a failed launch explains itself and leaves a log.
-- **0.1.4** (Nov 5):
-  - In-app updates: when a new version is out, an **Update** button appears at the top of the sidebar. The download is verified against its signature, and a restart finishes the install; open documents are saved first. Automatic checks can be turned off in **Settings › General**. A check only fetches a version manifest and sends no data. Version 0.1.3 and earlier need a one-time manual download of 0.1.4.
-  - Dark mode: choose System, Light or Dark in **Settings › Appearance**. Built-in and custom themes all have a dark look; export and printing stay light.
-- **0.1.3** (Nov 4): sidebar text is readable again when macOS is in dark mode.
-- **0.1.2** (Nov 4): the standard macOS menus and shortcuts (Hide, Minimize, Zoom, Full Screen); clicking the Dock icon reopens a window after the last one was closed. Fixed some Chinese characters rendering with the wrong glyphs.
-- **0.1.1** (Nov 3): first Windows x64 release, installed per user, keeping your notes on uninstall. Polished the Chinese and English interface and the built-in guide.
+输出位于 `dist/`。
 
-Full notes for each version are on [Releases](https://github.com/s1dashu/quiet-md/releases).
+## 开发
 
-## License
+```sh
+scripts/check.sh
+cargo test --bin QuietNext
+cargo clippy --all-targets -- -D warnings
+```
 
-The code is licensed under [MIT](LICENSE). Third-party code, fonts and assets are listed in [THIRD_PARTY.md](THIRD_PARTY.md).
+项目结构：
 
-The following are not covered by the MIT license and should be replaced in forks:
+```text
+crates/core/   文档引擎（模型、DocxXML、编辑核心、Markdown、文档库、数据库表）
+src/           GPUI 界面、编辑器、数据表、画板、日历、同步与设置
+packaging/     Windows/macOS/Linux 打包脚本
+docs/          架构、格式、主题与设计文档
+```
 
-- The 67 Nucleo icons in `assets/icons/` are under a commercial Nucleo license. Do not extract or redistribute them on their own.
-- The name "Quiet.md" and the app icon.
+更多说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 许可
+
+代码以 [MIT](LICENSE) 许可发布。第三方代码、字体和图标见 [THIRD_PARTY.md](THIRD_PARTY.md)。
+
+部分图标与品牌资源不属于 MIT 许可范围。若你要再分发或创建衍生版本，请阅读 [THIRD_PARTY.md](THIRD_PARTY.md)，并替换受限图标与品牌名称。
+
+---
+
+<p align="center">
+  <sub>QuietNext · local-first notes, structured data and visual thinking.</sub>
+</p>
