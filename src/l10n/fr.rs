@@ -1181,4 +1181,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("此视图没有额外设置", "Aucun réglage supplémentaire pour cette vue"),
     ("在视图设置中选择开始日期字段", "Choisissez un champ de date de début dans les paramètres de la vue"),
     ("没有带日期的记录", "Aucun enregistrement avec des dates"),
+    ("粘贴为文本", "Coller comme texte"),
+    ("导入文件", "Importer le fichier"),
+    ("多个文件", "Plusieurs fichiers"),
 ];

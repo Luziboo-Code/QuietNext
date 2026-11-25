@@ -1149,4 +1149,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("此视图没有额外设置", "Bu görünüm için ek ayar yok"),
     ("在视图设置中选择开始日期字段", "Görünüm ayarlarında başlangıç tarihi alanını seçin"),
     ("没有带日期的记录", "Tarihli kayıt yok"),
+    ("粘贴为文本", "Metin olarak yapıştır"),
+    ("导入文件", "Dosyayı içe aktar"),
+    ("多个文件", "Birden fazla dosya"),
 ];

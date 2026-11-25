@@ -10,6 +10,7 @@ use crate::model::*;
 use crate::feishu_theme::{self as theme, Theme};
 use crate::editor_ui::{MENU_INSET, MENU_PAD_Y, MENU_ROW_H, TipExt, icon, menu, panel, popover};
 use gpui::{prelude::FluentBuilder, *};
+use std::path::PathBuf;
 
 const SLASH_W: f32 = 247.;
 const SLASH_MAX_H: f32 = 351.;
@@ -325,6 +326,7 @@ impl Editor {
             Some(Menu::Button { block, offset }) => self.button_panel(block, offset, window, cx),
             Some(Menu::Reminder { block, offset }) => self.reminder_popover(block, offset, window, cx),
             Some(Menu::Template { pos, selected }) => self.template_picker(pos, selected, window, cx),
+            Some(Menu::PasteFile { paths, text, pos }) => self.paste_file_menu(&paths, &text, pos, cx),
             _ => None,
         };
         out.extend(menu_el);
@@ -1327,6 +1329,46 @@ impl Editor {
     }
 
     // ---- floating text toolbar
+
+    /// ⌘V found files: keep their paths as text, or import them as attachments.
+    fn paste_file_menu(&self, paths: &[PathBuf], text: &Option<String>, pos: Point<Pixels>, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let name: SharedString = if paths.len() == 1 {
+            paths[0].file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default().into()
+        } else {
+            crate::settings::text("多个文件").into()
+        };
+        let row = |id: &'static str, glyph: &'static str, label: &'static str| {
+            div().id(id).flex_none().h(px(MENU_ROW_H)).mx(px(MENU_INSET)).px(px(8.)).flex().items_center().gap(px(8.))
+                .rounded(px(crate::ui::ROW_RADIUS)).cursor_pointer().hover(|s| s.bg(Theme::fill_hover()))
+                .child(icon(glyph, 14., Theme::icon()))
+                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(crate::settings::text(label)))
+        };
+        let as_text = {
+            let paths = paths.to_vec();
+            let text = text.clone();
+            row("paste-file-text", "file-text", "粘贴为文本").on_mouse_down(MouseButton::Left, cx.listener(move |e, _, window, cx| {
+                cx.stop_propagation();
+                e.menu = None;
+                e.paste_file_as_text(&paths, text.as_deref(), window, cx);
+            }))
+        };
+        let import = {
+            let paths = paths.to_vec();
+            row("paste-file-import", "paperclip", "导入文件").on_mouse_down(MouseButton::Left, cx.listener(move |e, _, window, cx| {
+                cx.stop_propagation();
+                e.menu = None;
+                e.paste_import_files(paths.clone(), window, cx);
+            }))
+        };
+        let el = menu().id("paste-file-menu").occlude().w(px(300.)).py(px(MENU_PAD_Y))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(div().px(px(12.)).h(px(38.)).flex().items_center().gap(px(8.)).border_b_1().border_color(Theme::line_divider())
+                .child(icon("paperclip", 15., Theme::icon()))
+                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(px(12.)).text_color(Theme::text_caption()).child(name)))
+            .child(as_text)
+            .child(import);
+        Some(at(self.rel(pos), Anchor::TopLeft, el))
+    }
 
     fn toolbar(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let dropdown = match &self.menu {

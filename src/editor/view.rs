@@ -15,6 +15,7 @@ use gpui::*;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -109,9 +110,22 @@ pub enum Menu {
     Reminder { block: BlockId, offset: usize },
     /// 模板: the picker beside `pos`, with this one highlighted.
     Template { pos: Point<Pixels>, selected: usize },
+    /// ⌘V with files on the clipboard: paste their paths as text, or import them.
+    PasteFile { paths: Vec<PathBuf>, text: Option<String>, pos: Point<Pixels> },
 }
 
 pub type BoundsMap = Rc<RefCell<HashMap<BlockId, Bounds<Pixels>>>>;
+
+/// One line of pasted text that is nothing but a local file path.
+fn local_file_path(line: &str) -> Option<PathBuf> {
+    let s = line.trim().trim_matches('"');
+    let decoded = s.strip_prefix("file://").map(crate::markdown::percent_decode);
+    let s = decoded.as_deref().unwrap_or(s);
+    #[cfg(windows)]
+    let s = if decoded.is_some() && s.starts_with('/') && s.as_bytes().get(2) == Some(&b':') { &s[1..] } else { s };
+    let p = std::path::Path::new(s);
+    (p.is_absolute() && p.is_file()).then(|| p.to_path_buf())
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ScrollIntent { RevealCaret, PreserveViewport }
@@ -2101,6 +2115,23 @@ impl Editor {
         let head = self.core.sel.head.block;
         let rich_target = head != TITLE && !self.core.is_code(head);
         let internal = meta.and_then(|xml| docxml::parse(&xml).ok()).filter(|d| !d.blocks.is_empty());
+        // Files on the clipboard, or text that is nothing but local file paths:
+        // ask whether to keep them as text or import them as attachments.
+        let mut pasted_files: Vec<PathBuf> = file_refs.unwrap_or_default().iter().filter(|p| p.is_file()).cloned().collect();
+        if pasted_files.is_empty() && let Some(s) = text.as_deref() {
+            let lines: Vec<&str> = s.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+            let paths: Option<Vec<PathBuf>> = lines.iter().map(|l| local_file_path(l)).collect();
+            if let Some(paths) = paths { pasted_files = paths; }
+        }
+        let document_files = pasted_files.iter().any(|p| !super::image::is_local_image_file(p));
+        if !plain && rich_target && document_files && internal.is_none() && self.menu.is_none() {
+            let rect = self.block_rect(self.core.sel.head.block);
+            let pos = rect.map_or_else(|| point(px(32.), px(crate::app::HEADER_H + 12.)), |r| point(r.left(), r.bottom()));
+            self.menu = Some(Menu::PasteFile { paths: pasted_files, text, pos });
+            self.slash = None;
+            cx.notify();
+            return;
+        }
         let html = match &fake {
             Some(f) => f.html.clone(),
             None if !plain && internal.is_none() && rich_target && !text.as_deref().is_some_and(crate::paste::has_math) => {
@@ -2182,6 +2213,31 @@ impl Editor {
             self.toast(msg, cx);
         }
         self.slash = None;
+        self.changed(window, cx);
+    }
+
+    /// The 粘贴文件 panel's 粘贴为文本.
+    pub(super) fn paste_file_as_text(&mut self, paths: &[PathBuf], text: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
+        let s = text.map(str::to_string).unwrap_or_else(|| paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n"));
+        if !s.is_empty() { self.core.paste_text(&s); }
+        self.changed(window, cx);
+    }
+
+    /// The 粘贴文件 panel's 导入文件: images become image blocks, the rest attachments.
+    pub(super) fn paste_import_files(&mut self, paths: Vec<PathBuf>, window: &mut Window, cx: &mut Context<Self>) {
+        let (pics, docs): (Vec<PathBuf>, Vec<PathBuf>) = paths.into_iter().partition(|p| super::image::is_local_image_file(p));
+        let mut blocks = Vec::new();
+        for p in &pics {
+            match super::image::image_block_from_file(p) {
+                Ok(b) => blocks.push(b),
+                Err(msg) => self.toast(msg, cx),
+            }
+        }
+        if !blocks.is_empty() {
+            blocks.push(Block::text(""));
+            self.core.paste_blocks(blocks);
+        }
+        if !docs.is_empty() { self.import_files(docs, None, window, cx); }
         self.changed(window, cx);
     }
 

@@ -357,7 +357,11 @@ impl R<'_> {
         let open_on_click = {
             let p = path.clone();
             cx.listener(move |e: &mut Editor, ev: &MouseDownEvent, window, cx| {
-                if ev.click_count == 1 && !ev.modifiers.shift && (e.read_only || e.active_file(e.focus.is_focused(window)) == Some(id)) {
+                if ev.click_count >= 2 && !ev.modifiers.shift {
+                    cx.stop_propagation();
+                    window.prevent_default();
+                    e.open_with_default(p.as_deref(), cx);
+                } else if ev.click_count == 1 && !ev.modifiers.shift && (e.read_only || e.active_file(e.focus.is_focused(window)) == Some(id)) {
                     cx.stop_propagation();
                     window.prevent_default();
                     e.open_file(p.as_deref(), cx);
@@ -634,6 +638,14 @@ impl Editor {
     pub(super) fn open_file(&mut self, p: Option<&Path>, cx: &mut Context<Self>) {
         match p.filter(|p| p.fs_is_file()) {
             Some(p) => quick_look(p),
+            None => self.toast(crate::settings::text("文件不存在"), cx),
+        }
+    }
+
+    /// Double click: open the attachment in the system's default application.
+    pub(super) fn open_with_default(&mut self, p: Option<&Path>, cx: &mut Context<Self>) {
+        match p.filter(|p| p.fs_is_file()) {
+            Some(p) => cx.open_with_system(p),
             None => self.toast(crate::settings::text("文件不存在"), cx),
         }
     }
