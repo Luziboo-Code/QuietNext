@@ -420,24 +420,28 @@ pub(crate) fn render(v: &TableView, base: &Base, t: &Table, view: &View, r: &Rec
 fn body_section(v: &TableView, rec: RecId, r: &Record, cx: &Context<TableView>) -> Div {
     let Some(input) = v.record.body_input.clone() else { return div() };
     let tool = |id: &'static str, glyph: &'static str, text: &'static str| {
-        div().id(id).h(px(28.)).px(px(8.)).flex().items_center().gap(px(4.)).rounded(px(6.)).cursor_pointer()
-            .text_size(px(12.)).text_color(Theme::text_caption()).hover(|s| s.bg(Theme::fill_hover()))
+        div().id(id).h(px(26.)).px(px(7.)).flex().items_center().gap(px(4.)).rounded(px(6.)).cursor_pointer()
+            .text_size(px(11.5)).text_color(Theme::text_caption())
+            .hover(|s| s.bg(Theme::fill_hover()).text_color(Theme::text()))
             .child(icon(glyph, 13., Theme::icon())).child(label(text))
     };
     let editing = v.record.body_editing;
     let empty = r.body.trim().is_empty() && r.files.is_empty();
     let content: AnyElement = if editing {
-        div().min_h(px(180.)).w_full().flex().flex_col().gap(px(8.)).child(input).child(body_media(r, rec, cx)).into_any_element()
+        div().min_h(px(120.)).w_full().flex().flex_col().gap(px(10.)).child(input).child(body_media(r, rec, cx)).into_any_element()
     } else {
-        div().id("tb-rec-body-preview").min_h(px(180.)).w_full().flex().flex_col().gap(px(8.)).cursor_text()
-            .when(empty, |d| d.child(div().text_size(px(TEXT)).line_height(px(20.)).text_color(Theme::text_placeholder()).child(label("写点什么…"))))
+        div().id("tb-rec-body-preview").min_h(px(120.)).w_full().flex().flex_col().gap(px(10.)).cursor_text()
+            .when(empty, |d| d.child(div().text_size(px(TEXT)).line_height(px(22.)).text_color(Theme::text_placeholder()).child(label("写点什么…"))))
             .when(!empty, |d| d.child(md_preview(&r.body)))
             .child(body_media(r, rec, cx))
             .on_click(cx.listener(|v, _, window, cx| begin_body_edit(v, window, cx))).into_any_element()
     };
-    div().px(px(16.)).pt(px(20.)).flex().flex_col().gap(px(8.))
-        .child(div().flex().items_center().gap(px(4.))
-            .child(div().flex_1().text_size(px(12.)).text_color(Theme::text_caption()).child(label("内容")))
+    div().px(px(20.)).pt(px(18.)).pb(px(4.)).flex().flex_col().gap(px(8.))
+        .child(div().flex().items_center().gap(px(6.))
+            .child(div().flex().items_center().gap(px(8.))
+                .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(Theme::text()).child(label("内容")))
+                .child(div().text_size(px(11.)).text_color(Theme::text_placeholder()).child("Markdown")))
+            .child(div().flex_1())
             .child(if editing {
                 tool("tb-rec-preview", "eye-open", "预览").on_click(cx.listener(|v, _, _, cx| {
                     commit_body(v, true, cx);
@@ -449,8 +453,10 @@ fn body_section(v: &TableView, rec: RecId, r: &Record, cx: &Context<TableView>) 
             })
             .child(tool("tb-rec-paste-img", "image", "粘贴图片").on_click(cx.listener(move |v, _, _, cx| paste_body_image(v, rec, cx))))
             .child(tool("tb-rec-add-file", "paperclip", "添加附件").on_click(cx.listener(move |_, _, window, cx| add_body_files(rec, window, cx)))))
-        .child(div().min_h(px(180.)).w_full().rounded(px(8.)).border_1().border_color(Theme::line_border()).bg(crate::theme::raised(Theme::bg_body()))
-            .p(px(10.)).flex().flex_col().child(content))
+        .child(div().min_h(px(148.)).w_full().rounded(px(10.)).p(px(14.))
+            .bg(crate::theme::raised(Theme::bg_overlay()))
+            .border_1().border_color(if editing { Theme::primary() } else { gpui::transparent_black() })
+            .flex().flex_col().child(content))
 }
 
 /// Pictures and attachments of a record, in the body box. One the Markdown
@@ -498,7 +504,7 @@ fn md_preview(text: &str) -> AnyElement {
 }
 
 fn md_blocks(blocks: &[crate::model::Block], depth: usize) -> Div {
-    let mut col = div().w_full().min_w_0().flex().flex_col().gap(px(4.));
+    let mut col = div().w_full().min_w_0().flex().flex_col().gap(px(6.));
     for b in blocks {
         if b.text.text.trim().is_empty() && b.children.is_empty() && matches!(b.kind, crate::model::BlockKind::Text) { continue }
         col = col.child(md_block(b, depth));
@@ -508,15 +514,15 @@ fn md_blocks(blocks: &[crate::model::Block], depth: usize) -> Div {
 
 fn md_block(b: &crate::model::Block, depth: usize) -> AnyElement {
     use crate::model::BlockKind;
-    let mut node = div().w_full().min_w_0().flex_none().flex().flex_col().text_size(px(TEXT)).line_height(px(21.)).text_color(Theme::text());
+    let mut node = div().w_full().min_w_0().flex_none().flex().flex_col().text_size(px(TEXT)).line_height(px(22.)).text_color(Theme::text());
     match &b.kind {
         BlockKind::Heading { level, .. } => {
-            let size = match level { 1 => 24., 2 => 20., 3 => 17., _ => 15. };
-            node = node.text_size(px(size)).line_height(px(size * 1.35)).font_weight(FontWeight::SEMIBOLD).child(md_text(b, size));
+            let size = match level { 1 => 22., 2 => 18., 3 => 16., _ => 14. };
+            node = node.text_size(px(size)).line_height(px(size * 1.4)).font_weight(FontWeight::SEMIBOLD).child(md_text(b, size));
         }
         BlockKind::Code { .. } => {
-            node = node.rounded(px(6.)).bg(Theme::bg_overlay()).p(px(8.)).child(
-                div().font_family(crate::theme::MONO_FONT).text_size(px(13.)).line_height(px(19.)).child(b.text.text.clone()));
+            node = node.rounded(px(6.)).bg(crate::theme::raised(Theme::bg_body())).border_1().border_color(Theme::line_border()).p(px(10.)).child(
+                div().font_family(crate::theme::MONO_FONT).text_size(px(12.5)).line_height(px(19.)).child(b.text.text.clone()));
         }
         BlockKind::Divider => node = node.py(px(6.)).child(div().h(px(1.)).w_full().bg(Theme::line_divider())),
         BlockKind::Image { src, caption, .. } => node = node.child(md_image(src, caption.as_deref())),
@@ -548,7 +554,7 @@ fn md_block(b: &crate::model::Block, depth: usize) -> AnyElement {
 fn md_text(b: &crate::model::Block, _size: f32) -> StyledText {
     let runs = b.text.runs.iter().map(|r| {
         let mut f = font(if r.marks.code { crate::theme::MONO_FONT } else { crate::theme::ui_family() });
-        f.weight = if r.marks.bold || matches!(b.kind, crate::model::BlockKind::Heading { .. }) { FontWeight::BOLD } else { FontWeight::NORMAL };
+        f.weight = if r.marks.bold || matches!(b.kind, crate::model::BlockKind::Heading { .. }) { FontWeight::SEMIBOLD } else { FontWeight::NORMAL };
         if r.marks.italic { f.style = FontStyle::Italic; }
         let ink = if r.marks.link.is_some() { Theme::link() } else { Theme::text() };
         TextRun { len: r.len, font: f, color: ink,
@@ -563,7 +569,7 @@ fn md_image(src: &str, caption: Option<&str>) -> AnyElement {
     let Some(path) = crate::store::image_path(src) else {
         return div().w_full().p(px(8.)).rounded(px(6.)).bg(Theme::bg_overlay()).text_color(Theme::text_caption()).child(src.to_string()).into_any_element();
     };
-    div().w_full().max_w(px(560.)).flex().flex_col().gap(px(4.)).rounded(px(6.)).overflow_hidden()
+    div().w_full().max_w(px(560.)).flex().flex_col().gap(px(4.)).rounded(px(8.)).overflow_hidden()
         .child(crate::editor::image::picture(&path, 480.).max_w_full().max_h(px(320.)).object_fit(ObjectFit::Contain))
         .when_some(caption.filter(|c| !c.is_empty()), |d, c| d.child(div().text_size(px(12.)).text_color(Theme::text_caption()).child(c.to_string())))
         .into_any_element()
