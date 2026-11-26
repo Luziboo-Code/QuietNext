@@ -1118,4 +1118,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("准时", "Al empezar"),
     ("勾选文件夹会包含其中内容。", "Seleccionar una carpeta incluye todo su contenido."),
     ("没有匹配的文档", "No hay documentos coincidentes"),
+    ("内容", "Contenido"),
+    ("粘贴图片", "Pegar imagen"),
+    ("写点什么…", "Escribe algo…"),
 ];

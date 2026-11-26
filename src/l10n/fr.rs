@@ -1204,4 +1204,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("准时", "À l’heure"),
     ("勾选文件夹会包含其中内容。", "Cocher un dossier inclut tout son contenu."),
     ("没有匹配的文档", "Aucun document correspondant"),
+    ("内容", "Contenu"),
+    ("粘贴图片", "Coller l’image"),
+    ("写点什么…", "Écrivez quelque chose…"),
 ];

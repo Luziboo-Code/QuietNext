@@ -272,6 +272,10 @@ impl Value {
 pub struct Record {
     pub id: RecId,
     pub cells: HashMap<FieldId, Value>,
+    /// The record's page body (free text below the fields).
+    pub body: String,
+    /// Pictures and files attached to the record's page body.
+    pub files: Vec<Attachment>,
     /// Wall-clock milliseconds.
     pub created: i64,
     pub modified: i64,

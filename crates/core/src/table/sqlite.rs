@@ -12,7 +12,7 @@ use super::ops::Dirty;
 use anyhow::{Context, Result, bail};
 use rusqlite::types::{ToSqlOutput, Value as Sql, ValueRef};
 use rusqlite::{Connection, OpenFlags, Statement, TransactionBehavior, params, params_from_iter};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -203,7 +203,13 @@ fn insert_sql(name: &str, fields: usize) -> String { format!("INSERT OR REPLACE 
 /// Write one record (through `insert_sql`'s statement) as row `row`.
 fn put(stmt: &mut Statement, t: &Table, row: usize, r: &Record) -> rusqlite::Result<()> {
     // readable times to the minute, and the exact milliseconds (`c`, `m`) to read back
-    let meta = format!(r#"{{"created":"{}","modified":"{}","auto":{},"c":{},"m":{}}}"#, field::iso(r.created, true), field::iso(r.modified, true), r.auto, r.created, r.modified);
+    let meta = RowMeta {
+        c: Some(r.created), m: Some(r.modified), auto: Some(r.auto),
+        created: Some(field::iso(r.created, true)), modified: Some(field::iso(r.modified, true)),
+        body: (!r.body.is_empty()).then(|| r.body.clone()),
+        files: (!r.files.is_empty()).then(|| r.files.clone()),
+    };
+    let meta = serde_json::to_string(&meta).unwrap_or_default();
     let head = [Sql::Integer(r.id as i64), Sql::Integer(row as i64), Sql::Text(meta)].map(ToSqlOutput::Owned);
     stmt.execute(params_from_iter(head.into_iter().chain(t.fields.iter().map(|f| cell(f, r.get(f.id))))))?;
     Ok(())
@@ -318,9 +324,13 @@ fn write(conn: &Connection, base: &Base, dirty: Option<&Dirty>) -> Result<()> {
 // ---- reading ----
 
 /// What a row's `_meta` holds.
-#[derive(Default, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
-struct RowMeta { c: Option<i64>, m: Option<i64>, auto: Option<u64>, created: Option<String>, modified: Option<String> }
+struct RowMeta {
+    c: Option<i64>, m: Option<i64>, auto: Option<u64>, created: Option<String>, modified: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")] body: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")] files: Option<Vec<Attachment>>,
+}
 
 /// Every value of every table in the file, ours and SQLite's too, as text, a
 /// line each: what the unused-asset sweep (#237) looks for a file's name in.
@@ -493,6 +503,8 @@ fn read_table(conn: &Connection, sql: &str, mut t: Table, described: bool, next:
         r.created = c.or(m).unwrap_or(now);
         r.modified = m.unwrap_or(r.created);
         r.auto = meta.auto.unwrap_or_else(|| { t.next_auto += 1; t.next_auto - 1 });
+        r.body = meta.body.unwrap_or_default();
+        r.files = meta.files.unwrap_or_default();
         t.records.push(r);
     }
     if t.views.is_empty() {
@@ -640,11 +652,11 @@ mod tests {
         let total = lookup(&mut b, "页数合计", pages.id, Rollup::Sum);
         let first = lookup(&mut b, "最早开始", start.id, Rollup::Min);
 
-        let rec = |id: RecId, cells: Vec<(FieldId, Value)>| Record { id, cells: cells.into_iter().collect(), created: T0 + id as i64 * 1000, modified: T0 + id as i64 * 77_777, auto: id + 10 };
+        let rec = |id: RecId, cells: Vec<(FieldId, Value)>| Record { id, cells: cells.into_iter().collect(), created: T0 + id as i64 * 1000, modified: T0 + id as i64 * 77_777, auto: id + 10, ..Default::default() };
         let pick = |f: &Field, names: &[&str]| Value::Select(names.iter().map(|n| f.option_named(n).unwrap().id).collect());
         let file = |n: &str| super::super::model::Attachment { path: format!(".assets/{n}"), name: n.to_string() };
         let text = |s: &str| Value::Text(s.to_string());
-        let book_rows = vec![
+        let mut book_rows = vec![
             rec(1, vec![(title.id, text("三体")), (state.id, pick(&state, &["读完"])), (tags.id, pick(&tags, &["小说", "科幻"])), (reader.id, pick(&reader, &["小红", "小明"])),
                 (start.id, Value::Date(field::date_ms(2026, 11, 17, 9, 30))), (cover.id, Value::Files(vec![file("a.png"), file("带 空格.jpg")])), (pages.id, Value::Number(302.)),
                 (done.id, Value::Bool(true)), (url.id, text("https://example.com/三体")), (phone.id, text("010-1234")), (email.id, text("a@b.c")), (place.id, text("北京")),
@@ -655,6 +667,8 @@ mod tests {
                 (state.id, pick(&state, &["想读"])), (reader.id, pick(&reader, &["小明"]))]),
             rec(7, vec![]),
         ];
+        book_rows[0].body = "正文第一行\n第二行".into();
+        book_rows[0].files = vec![file("记录图片.png")];
         let author_rows = vec![
             rec(1, vec![(name.id, text("刘慈欣")), (works.id, Value::Links(vec![1, 2]))]),
             rec(2, vec![(name.id, text("佚名")), (works.id, Value::Links(vec![2]))]),

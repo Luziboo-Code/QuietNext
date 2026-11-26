@@ -70,6 +70,8 @@ pub enum TextFieldEvent {
     /// Tab / Shift+Tab when `tab_events` is set (moving between fields).
     Tab,
     ShiftTab,
+    /// A picture was pasted (the clipboard holds no text).
+    PasteImage,
 }
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(u64::MAX - 1_000_000);
@@ -338,8 +340,11 @@ impl TextField {
     }
 
     fn paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(t) = cx.read_from_clipboard().and_then(|i| i.text()) {
+        let Some(item) = cx.read_from_clipboard() else { return };
+        if let Some(t) = item.text() {
             self.replace(self.sel.clone(), &t, cx);
+        } else if item.entries().iter().any(|e| matches!(e, ClipboardEntry::Image(_))) {
+            cx.emit(TextFieldEvent::PasteImage);
         }
     }
 

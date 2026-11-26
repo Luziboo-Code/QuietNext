@@ -92,6 +92,11 @@ impl Doc {
     /// Set cells, as typed. A 双向关联's other side follows; computed fields are skipped.
     pub fn set_cells(&mut self, tid: TableId, cells: Vec<(RecId, FieldId, Value)>) -> bool { let ops = self.cell_ops(tid, cells); self.run(ops) }
 
+    /// Replace a record page's body and attachments (one undo step).
+    pub fn set_record_body(&mut self, tid: TableId, rec: RecId, body: String, files: Vec<Attachment>) -> bool {
+        self.run_in(tid, vec![Op::SetBody { rec, body, files }])
+    }
+
     /// `set_cells`, joined to the previous undo step.
     pub fn set_cells_joined(&mut self, tid: TableId, cells: Vec<(RecId, FieldId, Value)>) -> bool { let ops = self.cell_ops(tid, cells); self.run_joined(ops) }
 

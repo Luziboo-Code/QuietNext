@@ -1172,4 +1172,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("准时", "Başlangıçta"),
     ("勾选文件夹会包含其中内容。", "Bir klasörü seçmek içindekileri de kapsar."),
     ("没有匹配的文档", "Eşleşen belge yok"),
+    ("内容", "İçerik"),
+    ("粘贴图片", "Resmi yapıştır"),
+    ("写点什么…", "Bir şeyler yaz…"),
 ];

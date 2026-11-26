@@ -10,6 +10,8 @@ use std::collections::{HashMap, HashSet};
 pub enum Op {
     /// Set cells of one table. Computed fields are not set this way.
     SetCells(Vec<(RecId, FieldId, Value)>),
+    /// A record page's body and attachments.
+    SetBody { rec: RecId, body: String, files: Vec<Attachment> },
     /// Records with the row each lands on, rows ascending.
     InsertRecords(Vec<(usize, Record)>),
     RemoveRecords(Vec<RecId>),
@@ -116,6 +118,14 @@ impl Table {
                 if old.is_empty() { return vec![]; }
                 old.reverse();
                 vec![Op::SetCells(old)]
+            }
+            Op::SetBody { rec, body, files } => {
+                let Some(r) = self.record_mut(rec) else { return vec![] };
+                if r.body == body && r.files == files { return vec![] }
+                let old = Op::SetBody { rec, body: std::mem::replace(&mut r.body, body), files: std::mem::replace(&mut r.files, files) };
+                r.modified = field::now();
+                dirty.row(tid, rec);
+                vec![old]
             }
             Op::InsertRecords(recs) => {
                 let mut ids = vec![];

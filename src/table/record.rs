@@ -21,6 +21,10 @@ pub(crate) struct RecordUi {
     input: Option<Entity<TextField>>,
     /// The value being typed.
     editing: Option<CellId>,
+    /// The record page's body, below its fields.
+    body_input: Option<Entity<TextField>>,
+    body_rec: Option<RecId>,
+    body_save: Option<Task<()>>,
     /// ⋯'s menu, where it hangs.
     menu: Option<Point<Pixels>>,
     /// The view's hidden fields are listed too.
@@ -31,6 +35,7 @@ pub(crate) struct RecordUi {
 pub(crate) fn open(v: &mut TableView, rec: RecId, window: &mut Window, cx: &mut Context<TableView>) {
     v.commit_edit(true, window, cx);
     commit(v, true, window, cx);
+    commit_body(v, true, cx);
     if v.record.input.is_none() {
         let input = cx.new(|cx| { let mut t = TextField::new("", cx); t.size = TEXT; t.wrap = true; t });
         v.record._subs = vec![
@@ -43,6 +48,31 @@ pub(crate) fn open(v: &mut TableView, rec: RecId, window: &mut Window, cx: &mut 
         ];
         v.record.input = Some(input);
     }
+    if v.record.body_input.is_none() {
+        let body = cx.new(|cx| {
+            let mut t = TextField::new(crate::settings::text("写点什么…"), cx);
+            t.size = TEXT;
+            t.line_height = 20.;
+            t.multiline = true;
+            t.wrap = true;
+            t
+        });
+        let sub = cx.on_focus_out(&body.focus_handle(cx), window, |v, _, _, cx| commit_body(v, true, cx));
+        v.record._subs.push(sub);
+        let sub = cx.subscribe(&body, |v, _, ev: &TextFieldEvent, cx| match ev {
+            TextFieldEvent::PasteImage => { if let Some(rec) = v.record.body_rec { paste_body_image(v, rec, cx); } }
+            TextFieldEvent::Changed => {
+                v.record.body_save = Some(cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(std::time::Duration::from_millis(600)).await;
+                    let _ = this.update(cx, |v, cx| commit_body(v, true, cx));
+                }));
+            }
+            _ => {}
+        });
+        v.record._subs.push(sub);
+        v.record.body_input = Some(body);
+    }
+    load_body(v, rec, cx);
     v.record.menu = None;
     v.expanded = Some(rec);
     cx.notify();
@@ -50,9 +80,94 @@ pub(crate) fn open(v: &mut TableView, rec: RecId, window: &mut Window, cx: &mut 
 
 fn close(v: &mut TableView, window: &mut Window, cx: &mut Context<TableView>) {
     commit(v, true, window, cx);
+    commit_body(v, true, cx);
     v.record.menu = None;
     v.expanded = None;
     cx.notify();
+}
+
+fn load_body(v: &mut TableView, rec: RecId, cx: &mut Context<TableView>) {
+    let Some(input) = v.record.body_input.clone() else { return };
+    let text = v.state.read(cx).doc.base.table(v.table).and_then(|t| t.record(rec)).map(|r| r.body.clone()).unwrap_or_default();
+    input.update(cx, |t, cx| t.set_text(&text, cx));
+    v.record.body_rec = Some(rec);
+}
+
+fn commit_body(v: &mut TableView, save: bool, cx: &mut Context<TableView>) {
+    let (Some(rec), Some(input)) = (v.record.body_rec, v.record.body_input.clone()) else { return };
+    if !save { return }
+    let text = input.read(cx).text.clone();
+    let (files, old) = {
+        let st = v.state.read(cx);
+        let Some(r) = st.doc.base.table(v.table).and_then(|t| t.record(rec)) else { return };
+        (r.files.clone(), r.body.clone())
+    };
+    if text != old {
+        let tid = v.table;
+        v.edit(cx, |d| d.set_record_body(tid, rec, text, files));
+    }
+}
+
+fn body_files(v: &mut TableView, rec: RecId, cx: &Context<TableView>) -> Vec<Attachment> {
+    v.state.read(cx).doc.base.table(v.table).and_then(|t| t.record(rec)).map(|r| r.files.clone()).unwrap_or_default()
+}
+
+fn set_body_files(v: &mut TableView, rec: RecId, files: Vec<Attachment>, cx: &mut Context<TableView>) {
+    let Some(input) = v.record.body_input.clone() else { return };
+    let text = input.read(cx).text.clone();
+    let tid = v.table;
+    v.edit(cx, |d| d.set_record_body(tid, rec, text, files));
+}
+
+fn is_image(name: &str) -> bool {
+    matches!(std::path::Path::new(name).extension().and_then(|s| s.to_str()).unwrap_or_default().to_ascii_lowercase().as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "heic" | "tif" | "tiff")
+}
+
+fn store_body_file(v: &mut TableView, rec: RecId, name: String, source: &std::path::Path, cx: &mut Context<TableView>) {
+    let root = crate::store::Store::root_dir();
+    let dir = crate::store::Store::assets_dir().join("files").join(uuid::Uuid::new_v4().to_string());
+    if fdl_core::vfs::create_dir_all(&dir).is_err() { return }
+    let dest = dir.join(&name);
+    if fdl_core::vfs::copy(source, &dest).is_err() { return }
+    let rel = dest.strip_prefix(&root).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_else(|_| dest.to_string_lossy().to_string());
+    let mut files = body_files(v, rec, cx);
+    files.push(Attachment { path: rel, name });
+    set_body_files(v, rec, files, cx);
+}
+
+fn add_body_files(rec: RecId, window: &mut Window, cx: &mut Context<TableView>) {
+    let picked = crate::devtools::take_pick();
+    let prompt = picked.is_none().then(|| cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: true, prompt: Some(crate::settings::text("添加附件").into()), extensions: None }));
+    cx.spawn_in(window, async move |this, cx| {
+        let paths = match prompt { Some(p) => p.await.ok().and_then(Result::ok).flatten(), None => picked };
+        let Some(paths) = paths else { return };
+        let _ = this.update(cx, |v, cx| {
+            for p in paths {
+                let Some(name) = p.file_name().map(|n| n.to_string_lossy().to_string()) else { continue };
+                store_body_file(v, rec, name, &p, cx);
+            }
+        });
+    }).detach();
+}
+
+fn paste_body_image(v: &mut TableView, rec: RecId, cx: &mut Context<TableView>) {
+    let Some(item) = cx.read_from_clipboard() else { return };
+    let mut files = body_files(v, rec, cx);
+    let root = crate::store::Store::root_dir();
+    for entry in item.entries() {
+        if let ClipboardEntry::Image(img) = entry {
+            let Ok((bytes, ext)) = crate::editor::image::clipboard_image_data(img) else { continue };
+            let name = format!("image.{ext}");
+            let dir = crate::store::Store::assets_dir().join("files").join(uuid::Uuid::new_v4().to_string());
+            if fdl_core::vfs::create_dir_all(&dir).is_err() { continue }
+            let dest = dir.join(&name);
+            if fdl_core::vfs::write(&dest, &bytes).is_err() { continue }
+            let rel = dest.strip_prefix(&root).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_else(|_| dest.to_string_lossy().to_string());
+            files.push(Attachment { path: rel, name });
+        }
+    }
+    if files.len() > body_files(v, rec, cx).len() { set_body_files(v, rec, files, cx); }
 }
 
 /// Type in a value: the input takes the cell's text. 文本 takes line breaks; the title and the rest end on Enter.
@@ -212,6 +327,7 @@ pub(crate) fn render(v: &TableView, base: &Base, t: &Table, view: &View, r: &Rec
         if ui.show_hidden { list = list.children(hidden.into_iter().map(row)); }
     }
     list = list
+        .child(body_section(v, rid, r, cx))
         .child(div().px(px(16.)).pt(px(8.)).flex().child(div().id("tb-rec-add").h(px(32.)).px(px(8.)).flex().items_center().gap(px(6.)).rounded(px(6.)).cursor_pointer()
             .text_color(Theme::text_caption()).hover(|s| s.bg(Theme::fill_hover()))
             .child(icon("plus", 14., Theme::icon())).child(label("新增字段"))
@@ -257,6 +373,55 @@ pub(crate) fn render(v: &TableView, base: &Base, t: &Table, view: &View, r: &Rec
         .child(div().id("tb-rec-body").flex_1().min_h_0().overflow_y_scroll().child(list))
         .children(menu)
         .into_any_element()
+}
+
+/// The record page's body: free text, pasted pictures and attachments.
+fn body_section(v: &TableView, rec: RecId, r: &Record, cx: &Context<TableView>) -> Div {
+    let Some(input) = v.record.body_input.clone() else { return div() };
+    let tool = |id: &'static str, glyph: &'static str, text: &'static str| {
+        div().id(id).h(px(28.)).px(px(8.)).flex().items_center().gap(px(4.)).rounded(px(6.)).cursor_pointer()
+            .text_size(px(12.)).text_color(Theme::text_caption()).hover(|s| s.bg(Theme::fill_hover()))
+            .child(icon(glyph, 13., Theme::icon())).child(label(text))
+    };
+    let mut media = div().flex().flex_wrap().gap(px(8.));
+    for (i, a) in r.files.iter().enumerate() {
+        let abs = crate::store::Store::root_dir().join(&a.path);
+        let name = a.name.clone();
+        let path = a.path.clone();
+        let image = is_image(&a.name);
+        let preview = if image {
+            div().w(px(132.)).h(px(82.)).overflow_hidden().rounded(px(5.)).bg(crate::feishu_theme::c(crate::feishu_theme::ud::N100))
+                .child(crate::editor::image::picture(&abs, 82.).max_w_full().max_h_full()).into_any_element()
+        } else {
+            div().w(px(132.)).h(px(82.)).rounded(px(5.)).bg(crate::feishu_theme::c(crate::feishu_theme::ud::N100)).flex().items_center().justify_center()
+                .child(icon("paperclip", 22., Theme::icon())).into_any_element()
+        };
+        let files = r.files.clone();
+        media = media.child(div().id(("tb-rec-file", i)).group("tb-rec-file").w(px(140.)).flex().flex_col().gap(px(4.)).cursor_pointer()
+            .child(div().relative().w_full().child(preview)
+                .child(div().id(("tb-rec-file-del", i)).absolute().top(px(3.)).right(px(3.)).size(px(20.)).rounded(px(4.)).bg(crate::theme::raised(Theme::bg_body()))
+                    .invisible().group_hover("tb-rec-file", |s| s.visible()).flex().items_center().justify_center().cursor_pointer()
+                    .hover(|s| s.bg(Theme::fill_hover_strong())).child(icon("x", 12., Theme::icon()))
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |v, _, _, cx| {
+                        cx.stop_propagation();
+                        let mut files = files.clone();
+                        if i < files.len() { files.remove(i); }
+                        set_body_files(v, rec, files, cx);
+                    }))))
+            .child(div().w_full().text_size(px(11.)).text_color(Theme::text_caption()).overflow_hidden().whitespace_nowrap().text_ellipsis().child(name))
+            .on_click(cx.listener(move |_, _, _, cx| {
+                let abs = crate::store::Store::root_dir().join(&path);
+                cx.open_url(&format!("file://{}", abs.display()));
+            })));
+    }
+    div().px(px(16.)).pt(px(20.)).flex().flex_col().gap(px(8.))
+        .child(div().flex().items_center().gap(px(4.))
+            .child(div().flex_1().text_size(px(12.)).text_color(Theme::text_caption()).child(label("内容")))
+            .child(tool("tb-rec-paste-img", "image", "粘贴图片").on_click(cx.listener(move |v, _, _, cx| paste_body_image(v, rec, cx))))
+            .child(tool("tb-rec-add-file", "paperclip", "添加附件").on_click(cx.listener(move |_, _, window, cx| add_body_files(rec, window, cx)))))
+        .child(div().min_h(px(180.)).w_full().rounded(px(8.)).border_1().border_color(Theme::line_border()).bg(crate::theme::raised(Theme::bg_body()))
+            .p(px(10.)).flex().flex_col().child(input))
+        .child(media)
 }
 
 /// A value in 记录详情: `cell::value_view`, flush left.
