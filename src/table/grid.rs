@@ -539,7 +539,7 @@ pub(crate) fn render(v: &TableView, base: &Base, t: &Table, view: &View, window:
                         .when(ci == 0 && !editing, |d| d.child(div().absolute().right(px(6.)).top_0().h(px(row_h.min(32.))).flex().items_center().invisible().group_hover("tb-row", |s| s.visible())
                             .child(div().id(("tb-open", rid as usize)).h(px(22.)).px(px(6.)).flex().items_center().gap(px(4.)).rounded(px(6.)).border_1().border_color(line()).bg(Theme::bg_body()).cursor_pointer()
                                 .hover(|s| s.bg(c(ud::N100))).child(icon("expand", 12., Theme::icon())).child(div().text_size(px(12.)).text_color(Theme::text()).child(crate::settings::label("查看")))
-                                .on_mouse_down(MouseButton::Left, cx.listener(move |v, _, window, cx| { cx.stop_propagation(); v.commit_edit(true, window, cx); record::open(v, rid, window, cx); })))))
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |v, _, window, cx| { cx.stop_propagation(); v.commit_edit(true, window, cx); record::open_full(v, rid, window, cx); })))))
                         .when(corner, |d| d.child(div().id(("tb-fill", rid as usize)).absolute().right(px(-1.)).bottom(px(-1.)).size(px(7.)).bg(Theme::primary()).border_1().border_color(Theme::bg_body())
                             .cursor(CursorStyle::Crosshair)
                             .on_mouse_down(MouseButton::Left, cx.listener(move |v, _, _, cx| { cx.stop_propagation(); v.drag = Some(Drag::Fill(rid)); cx.notify(); }))))
@@ -552,6 +552,8 @@ pub(crate) fn render(v: &TableView, base: &Base, t: &Table, view: &View, window:
                             v.col_sel.clear();
                             if ev.modifiers.shift && let Some(s) = v.sel.as_mut() { s.head = id; }
                             else { v.sel = Some(Sel { anchor: id, head: id }); }
+                            // a click on the title opens 记录详情 beside the view
+                            if ci == 0 && ev.click_count == 1 && !was { record::open(v, rid, window, cx); }
                             // a second click on the active cell opens its editor, as a double click does
                             if ev.click_count >= 2 || (was && !ev.modifiers.shift) { v.begin_edit(id, None, window, cx); }
                             else { v.drag = Some(Drag::Select); }

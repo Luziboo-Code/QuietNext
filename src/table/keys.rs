@@ -18,7 +18,7 @@ pub(crate) fn key_down(v: &mut TableView, ev: &KeyDownEvent, window: &mut Window
         "f" if cmd => v.open_find(window, cx),
         "escape" if v.popup.is_some() || v.dropdown.is_some() => v.close_popup(window, cx),
         "escape" if v.find.is_some() => v.close_find(window, cx),
-        "escape" if v.expanded.is_some() => { v.expanded = None; cx.notify(); }
+        "escape" if v.expanded.is_some() => { v.expanded = None; v.record_modal = false; cx.notify(); }
         "escape" if v.sel.is_some() || !v.rows_sel.is_empty() || !v.col_sel.is_empty() => { v.clear_selection(); cx.notify(); }
         "c" if cmd => copy(v, false, cx),
         "x" if cmd => { copy(v, false, cx); v.clear_cells(cx); }

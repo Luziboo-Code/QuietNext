@@ -262,6 +262,8 @@ pub struct TableView {
     pub(crate) rename: Option<Rename>,
     /// 记录详情.
     pub(crate) expanded: Option<RecId>,
+    /// The record is shown as a full page (查看), not beside the view.
+    pub(crate) record_modal: bool,
     pub(crate) record: record::RecordUi,
     /// 表内搜索: the text, its matches, the current one.
     pub(crate) find: Option<Find>,
@@ -325,7 +327,7 @@ impl TableView {
             result: Default::default(), tops: Default::default(), order: Default::default(), row_of: Default::default(), result_key: (u64::MAX, 0, 0, 0),
             sel: None, rows_sel: HashSet::new(), col_sel: vec![], editing: None, input, aux, scroll: point(0., 0.),
             body: Rc::new(Cell::new(Bounds::default())), drag: None, popup: None, dropdown: None, rename: None,
-            expanded: None, record: Default::default(), find: None, find_input,
+            expanded: None, record_modal: false, record: Default::default(), find: None, find_input,
             grip_hover: None, _refresh: refresh, _subs: subs,
         }
     }
@@ -410,7 +412,7 @@ impl TableView {
             if self.sel.is_some_and(|s| !alive(&s.anchor) || !alive(&s.head)) { self.sel = None; }
             self.rows_sel.retain(|r| t.record(*r).is_some());
             self.col_sel.retain(|f| t.field(*f).is_some());
-            if self.expanded.is_some_and(|r| t.record(r).is_none()) { self.expanded = None; }
+            if self.expanded.is_some_and(|r| t.record(r).is_none()) { self.expanded = None; self.record_modal = false; }
         }
         if before != (self.table, self.view) { cx.emit(TableEvent::Shown); }
     }

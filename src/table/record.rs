@@ -25,6 +25,8 @@ pub(crate) struct RecordUi {
     body_input: Option<Entity<TextField>>,
     body_rec: Option<RecId>,
     body_save: Option<Task<()>>,
+    /// The body shows the Markdown preview; editing shows the source.
+    body_editing: bool,
     /// ⋯'s menu, where it hangs.
     menu: Option<Point<Pixels>>,
     /// The view's hidden fields are listed too.
@@ -33,6 +35,15 @@ pub(crate) struct RecordUi {
 }
 
 pub(crate) fn open(v: &mut TableView, rec: RecId, window: &mut Window, cx: &mut Context<TableView>) {
+    show(v, rec, false, window, cx);
+}
+
+/// 查看: the record takes the whole window, as a page of its own.
+pub(crate) fn open_full(v: &mut TableView, rec: RecId, window: &mut Window, cx: &mut Context<TableView>) {
+    show(v, rec, true, window, cx);
+}
+
+fn show(v: &mut TableView, rec: RecId, full: bool, window: &mut Window, cx: &mut Context<TableView>) {
     v.commit_edit(true, window, cx);
     commit(v, true, window, cx);
     commit_body(v, true, cx);
@@ -57,7 +68,11 @@ pub(crate) fn open(v: &mut TableView, rec: RecId, window: &mut Window, cx: &mut 
             t.wrap = true;
             t
         });
-        let sub = cx.on_focus_out(&body.focus_handle(cx), window, |v, _, _, cx| commit_body(v, true, cx));
+        let sub = cx.on_focus_out(&body.focus_handle(cx), window, |v, _, _, cx| {
+            commit_body(v, true, cx);
+            v.record.body_editing = false;
+            cx.notify();
+        });
         v.record._subs.push(sub);
         let sub = cx.subscribe(&body, |v, _, ev: &TextFieldEvent, cx| match ev {
             TextFieldEvent::PasteImage => { if let Some(rec) = v.record.body_rec { paste_body_image(v, rec, cx); } }
@@ -73,8 +88,22 @@ pub(crate) fn open(v: &mut TableView, rec: RecId, window: &mut Window, cx: &mut 
         v.record.body_input = Some(body);
     }
     load_body(v, rec, cx);
+    v.record.body_editing = false;
     v.record.menu = None;
+    v.record_modal = full;
     v.expanded = Some(rec);
+    cx.notify();
+}
+
+/// Focus the body's source editor (a click on the preview does this).
+fn begin_body_edit(v: &mut TableView, window: &mut Window, cx: &mut Context<TableView>) {
+    let Some(input) = v.record.body_input.clone() else { return };
+    v.commit_edit(true, window, cx);
+    commit(v, true, window, cx);
+    v.record.body_editing = true;
+    let focus = input.focus_handle(cx);
+    window.focus(&focus, cx);
+    window.defer(cx, move |window, cx| window.focus(&focus, cx));
     cx.notify();
 }
 
@@ -83,6 +112,7 @@ fn close(v: &mut TableView, window: &mut Window, cx: &mut Context<TableView>) {
     commit_body(v, true, cx);
     v.record.menu = None;
     v.expanded = None;
+    v.record_modal = false;
     cx.notify();
 }
 
@@ -238,8 +268,10 @@ fn placeholder(ty: FieldType) -> &'static str {
 
 pub(crate) fn render(v: &TableView, base: &Base, t: &Table, view: &View, r: &Record, window: &mut Window, cx: &Context<TableView>) -> AnyElement {
     let rid = r.id;
-    // a table in a page opens the record as a dialog over the window (飞书 docx), not beside the table
-    let modal = !v.full;
+    // a table in a page opens the record as a dialog over the window (飞书 docx), not beside the table;
+    // 查看 opens it as a page of its own over the whole window
+    let full_page = v.record_modal;
+    let modal = full_page || !v.full;
     let label_w = if modal { 240. } else { LABEL_W };
     let ui = &v.record;
     // the neighbours in the view's order (a record the filter leaves out has none)
@@ -355,6 +387,14 @@ pub(crate) fn render(v: &TableView, base: &Base, t: &Table, view: &View, r: &Rec
                 if v.sel.is_some_and(|s| s.anchor.0 == rid || s.head.0 == rid) { v.sel = None; }
             }))))).with_priority(5));
 
+    if full_page {
+        let vp = window.viewport_size();
+        return deferred(anchored().position(point(px(0.), px(0.))).child(
+            div().id("tb-record-full").occlude().w(vp.width).h(vp.height).bg(Theme::bg_body()).flex().flex_col()
+                .child(head)
+                .child(div().id("tb-rec-body").flex_1().min_h_0().overflow_y_scroll().child(div().w_full().max_w(px(900.)).mx_auto().child(list)))
+                .children(menu))).with_priority(4).into_any_element();
+    }
     if modal {
         // 飞书's record dialog: the page dimmed, the record centred (781×675 in a 1161×795 window, measured)
         let vp = window.viewport_size();
@@ -375,7 +415,8 @@ pub(crate) fn render(v: &TableView, base: &Base, t: &Table, view: &View, r: &Rec
         .into_any_element()
 }
 
-/// The record page's body: free text, pasted pictures and attachments.
+/// The record page's body: Markdown preview (pictures inside the box), its
+/// source while editing, and the files pasted or attached to it.
 fn body_section(v: &TableView, rec: RecId, r: &Record, cx: &Context<TableView>) -> Div {
     let Some(input) = v.record.body_input.clone() else { return div() };
     let tool = |id: &'static str, glyph: &'static str, text: &'static str| {
@@ -383,21 +424,53 @@ fn body_section(v: &TableView, rec: RecId, r: &Record, cx: &Context<TableView>) 
             .text_size(px(12.)).text_color(Theme::text_caption()).hover(|s| s.bg(Theme::fill_hover()))
             .child(icon(glyph, 13., Theme::icon())).child(label(text))
     };
+    let editing = v.record.body_editing;
+    let empty = r.body.trim().is_empty() && r.files.is_empty();
+    let content: AnyElement = if editing {
+        div().min_h(px(180.)).w_full().flex().flex_col().gap(px(8.)).child(input).child(body_media(r, rec, cx)).into_any_element()
+    } else {
+        div().id("tb-rec-body-preview").min_h(px(180.)).w_full().flex().flex_col().gap(px(8.)).cursor_text()
+            .when(empty, |d| d.child(div().text_size(px(TEXT)).line_height(px(20.)).text_color(Theme::text_placeholder()).child(label("写点什么…"))))
+            .when(!empty, |d| d.child(md_preview(&r.body)))
+            .child(body_media(r, rec, cx))
+            .on_click(cx.listener(|v, _, window, cx| begin_body_edit(v, window, cx))).into_any_element()
+    };
+    div().px(px(16.)).pt(px(20.)).flex().flex_col().gap(px(8.))
+        .child(div().flex().items_center().gap(px(4.))
+            .child(div().flex_1().text_size(px(12.)).text_color(Theme::text_caption()).child(label("内容")))
+            .child(if editing {
+                tool("tb-rec-preview", "eye-open", "预览").on_click(cx.listener(|v, _, _, cx| {
+                    commit_body(v, true, cx);
+                    v.record.body_editing = false;
+                    cx.notify();
+                }))
+            } else {
+                tool("tb-rec-edit", "pen-line", "编辑").on_click(cx.listener(|v, _, window, cx| begin_body_edit(v, window, cx)))
+            })
+            .child(tool("tb-rec-paste-img", "image", "粘贴图片").on_click(cx.listener(move |v, _, _, cx| paste_body_image(v, rec, cx))))
+            .child(tool("tb-rec-add-file", "paperclip", "添加附件").on_click(cx.listener(move |_, _, window, cx| add_body_files(rec, window, cx)))))
+        .child(div().min_h(px(180.)).w_full().rounded(px(8.)).border_1().border_color(Theme::line_border()).bg(crate::theme::raised(Theme::bg_body()))
+            .p(px(10.)).flex().flex_col().child(content))
+}
+
+/// Pictures and attachments of a record, in the body box. One the Markdown
+/// already shows is left out here.
+fn body_media(r: &Record, rec: RecId, cx: &Context<TableView>) -> Div {
     let mut media = div().flex().flex_wrap().gap(px(8.));
     for (i, a) in r.files.iter().enumerate() {
+        if r.body.contains(&a.path) || r.body.contains(&a.name) { continue }
         let abs = crate::store::Store::root_dir().join(&a.path);
         let name = a.name.clone();
         let path = a.path.clone();
-        let image = is_image(&a.name);
-        let preview = if image {
-            div().w(px(132.)).h(px(82.)).overflow_hidden().rounded(px(5.)).bg(crate::feishu_theme::c(crate::feishu_theme::ud::N100))
-                .child(crate::editor::image::picture(&abs, 82.).max_w_full().max_h_full()).into_any_element()
+        let preview = if is_image(&a.name) {
+            div().w(px(126.)).h(px(78.)).overflow_hidden().rounded(px(5.)).bg(crate::feishu_theme::c(crate::feishu_theme::ud::N100))
+                .child(crate::editor::image::picture(&abs, 78.).max_w_full().max_h_full()).into_any_element()
         } else {
-            div().w(px(132.)).h(px(82.)).rounded(px(5.)).bg(crate::feishu_theme::c(crate::feishu_theme::ud::N100)).flex().items_center().justify_center()
+            div().w(px(126.)).h(px(78.)).rounded(px(5.)).bg(crate::feishu_theme::c(crate::feishu_theme::ud::N100)).flex().items_center().justify_center()
                 .child(icon("paperclip", 22., Theme::icon())).into_any_element()
         };
         let files = r.files.clone();
-        media = media.child(div().id(("tb-rec-file", i)).group("tb-rec-file").w(px(140.)).flex().flex_col().gap(px(4.)).cursor_pointer()
+        media = media.child(div().id(("tb-rec-file", i)).group("tb-rec-file").w(px(134.)).flex().flex_col().gap(px(4.)).cursor_pointer()
             .child(div().relative().w_full().child(preview)
                 .child(div().id(("tb-rec-file-del", i)).absolute().top(px(3.)).right(px(3.)).size(px(20.)).rounded(px(4.)).bg(crate::theme::raised(Theme::bg_body()))
                     .invisible().group_hover("tb-rec-file", |s| s.visible()).flex().items_center().justify_center().cursor_pointer()
@@ -410,18 +483,90 @@ fn body_section(v: &TableView, rec: RecId, r: &Record, cx: &Context<TableView>) 
                     }))))
             .child(div().w_full().text_size(px(11.)).text_color(Theme::text_caption()).overflow_hidden().whitespace_nowrap().text_ellipsis().child(name))
             .on_click(cx.listener(move |_, _, _, cx| {
+                cx.stop_propagation();
                 let abs = crate::store::Store::root_dir().join(&path);
                 cx.open_url(&format!("file://{}", abs.display()));
             })));
     }
-    div().px(px(16.)).pt(px(20.)).flex().flex_col().gap(px(8.))
-        .child(div().flex().items_center().gap(px(4.))
-            .child(div().flex_1().text_size(px(12.)).text_color(Theme::text_caption()).child(label("内容")))
-            .child(tool("tb-rec-paste-img", "image", "粘贴图片").on_click(cx.listener(move |v, _, _, cx| paste_body_image(v, rec, cx))))
-            .child(tool("tb-rec-add-file", "paperclip", "添加附件").on_click(cx.listener(move |_, _, window, cx| add_body_files(rec, window, cx)))))
-        .child(div().min_h(px(180.)).w_full().rounded(px(8.)).border_1().border_color(Theme::line_border()).bg(crate::theme::raised(Theme::bg_body()))
-            .p(px(10.)).flex().flex_col().child(input))
-        .child(media)
+    media
+}
+
+/// Markdown as blocks: headings, lists, quotes, code, dividers and pictures.
+fn md_preview(text: &str) -> AnyElement {
+    let doc = crate::markdown::parse_file(text, "", Some(&crate::store::Store::root_dir()));
+    md_blocks(&doc.blocks, 0).into_any_element()
+}
+
+fn md_blocks(blocks: &[crate::model::Block], depth: usize) -> Div {
+    let mut col = div().w_full().min_w_0().flex().flex_col().gap(px(4.));
+    for b in blocks {
+        if b.text.text.trim().is_empty() && b.children.is_empty() && matches!(b.kind, crate::model::BlockKind::Text) { continue }
+        col = col.child(md_block(b, depth));
+    }
+    col
+}
+
+fn md_block(b: &crate::model::Block, depth: usize) -> AnyElement {
+    use crate::model::BlockKind;
+    let mut node = div().w_full().min_w_0().flex_none().flex().flex_col().text_size(px(TEXT)).line_height(px(21.)).text_color(Theme::text());
+    match &b.kind {
+        BlockKind::Heading { level, .. } => {
+            let size = match level { 1 => 24., 2 => 20., 3 => 17., _ => 15. };
+            node = node.text_size(px(size)).line_height(px(size * 1.35)).font_weight(FontWeight::SEMIBOLD).child(md_text(b, size));
+        }
+        BlockKind::Code { .. } => {
+            node = node.rounded(px(6.)).bg(Theme::bg_overlay()).p(px(8.)).child(
+                div().font_family(crate::theme::MONO_FONT).text_size(px(13.)).line_height(px(19.)).child(b.text.text.clone()));
+        }
+        BlockKind::Divider => node = node.py(px(6.)).child(div().h(px(1.)).w_full().bg(Theme::line_divider())),
+        BlockKind::Image { src, caption, .. } => node = node.child(md_image(src, caption.as_deref())),
+        BlockKind::Bullet | BlockKind::Ordered { .. } | BlockKind::Todo { .. } => {
+            let (marker, text) = match &b.kind {
+                BlockKind::Bullet => ("•".to_string(), md_text(b, TEXT)),
+                BlockKind::Ordered { seq } => (format!("{}.", seq.unwrap_or(1)), md_text(b, TEXT)),
+                BlockKind::Todo { done } => ((if *done { "☑" } else { "☐" }).to_string(), md_text(b, TEXT)),
+                _ => unreachable!(),
+            };
+            let mut body = div().min_w_0().flex_1().flex().flex_col().child(text);
+            if !b.children.is_empty() { body = body.child(div().mt(px(2.)).child(md_blocks(&b.children, depth + 1))); }
+            return div().w_full().flex().items_start().gap(px(8.)).child(div().flex_none().text_color(Theme::text_caption()).child(marker)).child(body).into_any_element();
+        }
+        BlockKind::Quote => {
+            let mut body = div().min_w_0().flex_1().flex().flex_col().gap(px(2.)).text_color(Theme::text_caption());
+            if !b.text.text.trim().is_empty() { body = body.child(md_text(b, TEXT)); }
+            if !b.children.is_empty() { body = body.child(md_blocks(&b.children, depth + 1)); }
+            return div().w_full().pl(px(10.)).border_l(px(2.)).border_color(Theme::line_divider()).child(body).into_any_element();
+        }
+        _ => {
+            if !b.text.text.trim().is_empty() { node = node.child(md_text(b, TEXT)); }
+            if !b.children.is_empty() { node = node.child(md_blocks(&b.children, depth + 1)); }
+        }
+    }
+    node.into_any_element()
+}
+
+fn md_text(b: &crate::model::Block, _size: f32) -> StyledText {
+    let runs = b.text.runs.iter().map(|r| {
+        let mut f = font(if r.marks.code { crate::theme::MONO_FONT } else { crate::theme::ui_family() });
+        f.weight = if r.marks.bold || matches!(b.kind, crate::model::BlockKind::Heading { .. }) { FontWeight::BOLD } else { FontWeight::NORMAL };
+        if r.marks.italic { f.style = FontStyle::Italic; }
+        let ink = if r.marks.link.is_some() { Theme::link() } else { Theme::text() };
+        TextRun { len: r.len, font: f, color: ink,
+            background_color: r.marks.code.then_some(Theme::bg_overlay()),
+            underline: (r.marks.underline || r.marks.link.is_some()).then_some(UnderlineStyle { thickness: px(1.), color: None, wavy: false }),
+            strikethrough: r.marks.strike.then_some(StrikethroughStyle { thickness: px(1.), color: None }) }
+    }).collect::<Vec<_>>();
+    StyledText::new(b.text.text.clone()).with_runs(runs)
+}
+
+fn md_image(src: &str, caption: Option<&str>) -> AnyElement {
+    let Some(path) = crate::store::image_path(src) else {
+        return div().w_full().p(px(8.)).rounded(px(6.)).bg(Theme::bg_overlay()).text_color(Theme::text_caption()).child(src.to_string()).into_any_element();
+    };
+    div().w_full().max_w(px(560.)).flex().flex_col().gap(px(4.)).rounded(px(6.)).overflow_hidden()
+        .child(crate::editor::image::picture(&path, 480.).max_w_full().max_h(px(320.)).object_fit(ObjectFit::Contain))
+        .when_some(caption.filter(|c| !c.is_empty()), |d, c| d.child(div().text_size(px(12.)).text_color(Theme::text_caption()).child(c.to_string())))
+        .into_any_element()
 }
 
 /// A value in 记录详情: `cell::value_view`, flush left.
