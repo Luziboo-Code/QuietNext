@@ -2597,6 +2597,8 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "展开全部" => "Expand all",
         "折叠全部" => "Collapse all",
         "定位当前文档" => "Locate current document",
+        "后退" => "Back",
+        "前进" => "Forward",
         "港元" => "Hong Kong dollar",
         "澳大利亚元" => "Australian dollar",
         "瑞士法郎" => "Swiss franc",

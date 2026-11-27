@@ -447,7 +447,7 @@ impl Workspace {
                         cx.notify();
                     })),
             )
-            .child(trigger("section-locate", "text-search").tip(crate::settings::text("定位当前文档"), None).on_click(cx.listener(|w, _, _, cx| {
+            .child(trigger("section-locate", "locate").tip(crate::settings::text("定位当前文档"), None).on_click(cx.listener(|w, _, _, cx| {
                 w.locate_current_page();
                 cx.notify();
             })))

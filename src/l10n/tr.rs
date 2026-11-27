@@ -1178,4 +1178,6 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("展开全部", "Tümünü genişlet"),
     ("折叠全部", "Tümünü daralt"),
     ("定位当前文档", "Geçerli belgeye git"),
+    ("后退", "Geri"),
+    ("前进", "İleri"),
 ];

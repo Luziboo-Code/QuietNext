@@ -124,6 +124,7 @@ impl Workspace {
     }
 
     pub(crate) fn open_folder(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let before = self.nav_target();
         let target = id.to_string();
         if !self.save_before(cx, move |w, window, cx| { w.open_folder(&target, window, cx); }) { return false; }
         self.editor = None;
@@ -141,6 +142,7 @@ impl Workspace {
         self.reveal_in_tree(id);
         window.focus(&self.focus, cx);
         cx.notify();
+        self.nav_record(before);
         true
     }
 

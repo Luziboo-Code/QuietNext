@@ -1124,4 +1124,6 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("展开全部", "Expandir todo"),
     ("折叠全部", "Contraer todo"),
     ("定位当前文档", "Localizar documento actual"),
+    ("后退", "Atrás"),
+    ("前进", "Adelante"),
 ];

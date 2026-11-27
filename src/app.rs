@@ -225,6 +225,13 @@ pub enum View {
     Review,
 }
 
+/// One step of 前进 / 后退: the page view and, for a document or folder, its id.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Nav {
+    view: View,
+    id: Option<String>,
+}
+
 /// A confirmation dialog and the pages it is about.
 #[derive(Clone, Debug)]
 pub enum Confirm {
@@ -477,6 +484,10 @@ pub struct Workspace {
     /// The first-launch pages laid over the window again (⌘⌥⇧O, Settings › About).
     pub onboarding: Option<Entity<crate::onboarding::Onboarding>>,
     pub view: View,
+    /// Browser-like page history for the header's 后退 / 前进.
+    pub(crate) nav_back: Vec<Nav>,
+    pub(crate) nav_forward: Vec<Nav>,
+    nav_restoring: bool,
     pub home: crate::home::Home,
     pub calendar: crate::calendar::Calendar,
     pub review: crate::review::Review,
@@ -974,6 +985,9 @@ impl Workspace {
             confirm: None,
             onboarding: None,
             view: View::Doc,
+            nav_back: vec![],
+            nav_forward: vec![],
+            nav_restoring: false,
             home: Default::default(),
             calendar: Default::default(),
             review: Default::default(),
@@ -1089,6 +1103,7 @@ impl Workspace {
             self.set_active_pane(!self.active_second, cx);
             return true;
         }
+        let before = self.nav_target();
         // A snapshot is on screen: back to the live document before anything
         // else touches the editor.
         if self.history.is_some() { self.close_history(cx); }
@@ -1101,6 +1116,7 @@ impl Workspace {
             cx.notify();
         }
         if self.current.as_deref() == Some(id) {
+            self.nav_record(before);
             return true;
         }
         let target = id.to_string();
@@ -1190,6 +1206,7 @@ impl Workspace {
         self.doc_sub = None;
         self.mode_menu = false;
         cx.notify();
+        self.nav_record(before);
         true
     }
 
@@ -1409,6 +1426,7 @@ impl Workspace {
 
     /// Switch the main pane to a page view (or back to the document).
     pub fn show_view(&mut self, view: View, cx: &mut Context<Self>) {
+        let before = self.nav_target();
         self.cancel_shortcut_recording(cx);
         self.close_history(cx);
         // 阅读位置: leaving the document with ⌘H or 回收站 also counts.
@@ -1424,7 +1442,61 @@ impl Workspace {
         self.pref_menu = None;
         self.font_menu = None;
         self.home.sort_menu = false;
+        self.nav_record(before);
         cx.notify();
+    }
+
+    pub(crate) fn nav_target(&self) -> Nav {
+        match self.view {
+            View::Doc => match self.current.clone() {
+                Some(id) => Nav { view: View::Doc, id: Some(id) },
+                None => Nav { view: View::Home, id: None },
+            },
+            View::Folder => match self.folder_current.clone() {
+                Some(id) => Nav { view: View::Folder, id: Some(id) },
+                None => Nav { view: View::Home, id: None },
+            },
+            view => Nav { view, id: None },
+        }
+    }
+
+    /// Keep the page being left for 后退, unless that page is the one shown.
+    pub(crate) fn nav_record(&mut self, before: Nav) {
+        if self.nav_restoring || before == self.nav_target() { return }
+        if self.nav_back.last() != Some(&before) {
+            self.nav_back.push(before);
+            if self.nav_back.len() > 50 { self.nav_back.remove(0); }
+        }
+        self.nav_forward.clear();
+    }
+
+    fn nav_go(&mut self, target: Nav, window: &mut Window, cx: &mut Context<Self>) {
+        self.nav_restoring = true;
+        match target.view {
+            View::Doc => match target.id.filter(|id| self.entries.iter().any(|e| &e.id == id)) {
+                Some(id) => { self.try_open(&id, window, cx); }
+                None => self.show_view(View::Home, cx),
+            },
+            View::Folder => match target.id.filter(|id| self.entries.iter().any(|e| &e.id == id)) {
+                Some(id) => { self.open_folder(&id, window, cx); }
+                None => self.show_view(View::Home, cx),
+            },
+            view => self.show_view(view, cx),
+        }
+        self.nav_restoring = false;
+        cx.notify();
+    }
+
+    pub(crate) fn nav_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(target) = self.nav_back.pop() else { return };
+        self.nav_forward.push(self.nav_target());
+        self.nav_go(target, window, cx);
+    }
+
+    pub(crate) fn nav_forward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(target) = self.nav_forward.pop() else { return };
+        self.nav_back.push(self.nav_target());
+        self.nav_go(target, window, cx);
     }
 
     /// A success toast (删除成功, 移动成功 …).
@@ -1987,7 +2059,7 @@ impl Workspace {
         let title_w = f32::from(window.text_system().shape_line(title.clone().into(), px(17.), &[window.text_style().highlight(HighlightStyle { font_weight: Some(FontWeight::SEMIBOLD), ..Default::default() }).to_run(title.len())], None).width);
         // page_header's left inset (26 with the sidebar, else the traffic
         // lights plus the 4 + 28 + 12 of 展开侧栏), then 16 clear of the title.
-        let left = if self.sidebar_open { 26. } else { theme::TRAFFIC_LIGHTS_W + 44. + if cfg!(target_os = "windows") { 32. } else { 0. } } + title_w + 16.;
+        let left = (if self.sidebar_open { 26. } else { theme::TRAFFIC_LIGHTS_W + 44. + if cfg!(target_os = "windows") { 32. } else { 0. } }) + 2. * 26. + 10. + title_w + 16.;
         // … 导入 + are 32 wide each, then the right inset; 16 clear of them.
         let right = 3. * HEADER_ACTIONS_H + crate::ui::header_right_inset() + 16.;
         let half = (main / 2. - left).min(main / 2. - right);
@@ -2117,7 +2189,8 @@ impl Workspace {
         // Too narrow for the path: it folds into one "…" (the path on hover),
         // and the title keeps the room. Left: the sidebar's buttons when it is
         // closed; right: the three actions.
-        let left = if self.sidebar_open { 18. } else { theme::TRAFFIC_LIGHTS_W + 4. + 28. + 4. + 28. + 25. };
+        let (can_back, can_forward) = (!self.nav_back.is_empty(), !self.nav_forward.is_empty());
+        let left = if self.sidebar_open { 18. + 2. * 26. + 10. } else { theme::TRAFFIC_LIGHTS_W + 4. + 28. + 4. + 28. + 2. * 26. + 25. };
         let room = pane_w - left - crate::ui::header_right_inset() - 3. * HEADER_ACTIONS_H - 8. - 16.;
         if room < 360. && !crumbs.is_empty() {
             let path: Vec<&str> = std::iter::once(start).chain(chain.iter().map(|c| c.1.as_str())).collect();
@@ -2131,6 +2204,14 @@ impl Workspace {
         let doc_open = self.doc_menu;
         // In 分屏 both headers are drawn at once: their element ids differ.
         let id = |name: &str| if second { format!("{name}-2") } else { name.to_string() };
+        let nav_btn = |name: &'static str, glyph: &'static str, on: bool, tip: &'static str| {
+            let back = name == "nav-back";
+            div().id(id(name)).no_drag().flex_none().size(px(26.)).flex().items_center().justify_center().rounded(px(6.))
+                .when(on, |d| d.cursor_pointer().hover(|s| s.bg(Theme::fill_hover_strong())).active(|s| s.bg(Theme::fill_pressed()))
+                    .tip(tip, None)
+                    .on_click(cx.listener(move |w, _, window, cx| if back { w.nav_back(window, cx) } else { w.nav_forward(window, cx) })))
+                .child(icon(glyph, 16., if on { Theme::icon() } else { Theme::text_disabled() }))
+        };
         div()
             .id(id("top-bar")).relative()
             .h(px(HEADER_H))
@@ -2177,6 +2258,12 @@ impl Workspace {
                 )
                 .child(div().mx(px(12.)).child(divider()))
             })
+            .when(!second, |d| d.child(
+                div().flex_none().flex().items_center().gap(px(2.))
+                    .child(nav_btn("nav-back", "chevron-left", can_back, crate::settings::tr("后退", "Back")))
+                    .child(nav_btn("nav-forward", "chevron-right", can_forward, crate::settings::tr("前进", "Forward")))
+                    .child(div().mx(px(8.)).child(divider())),
+            ))
             .child(
                 div()
                     .min_w_0()
