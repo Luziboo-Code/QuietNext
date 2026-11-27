@@ -320,8 +320,12 @@ pub fn shadow_button() -> Vec<BoxShadow> {
 
 /// The platform's sans: the interface's family unless 外观 › 界面字体 says
 /// otherwise, and the document's when its theme names no family.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "macos")]
 pub const SYSTEM_FONT: &str = ".SystemUIFont";
+/// DirectWrite's own fallback is the icon-title font, which can be a serif
+/// on customized Windows installs; the interface keeps Segoe UI.
+#[cfg(target_os = "windows")]
+pub const SYSTEM_FONT: &str = "Segoe UI";
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_family = "wasm")))]
 pub const SYSTEM_FONT: &str = "Noto Sans";
 /// The web build brings its own fonts (src/web.rs).

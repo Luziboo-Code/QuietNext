@@ -1702,6 +1702,13 @@ impl Workspace {
                         let _ = crate::sync::save_config(&crate::store::Store::root_dir(), &w.sync_config);
                         w.entries = w.store.list();
                         w.sort();
+                        // `.quiet/preferences.json` carries 模板 (and the other
+                        // settings): read the downloaded copy into this window
+                        // now, instead of waiting for the next launch.
+                        if r.downloaded > 0 {
+                            load();
+                            refresh_all(w, cx);
+                        }
                         if r.downloaded > 0 && w.view == crate::app::View::Doc && !w.unsaved
                             && let Some(id) = current.as_deref() {
                             w.open(id, window, cx);
@@ -1747,6 +1754,11 @@ impl Workspace {
                         w.sync_config.last_status = msg.clone();
                         w.entries = w.store.list();
                         w.sort();
+                        // 模板 and the other preferences may have come down too.
+                        if r.downloaded > 0 {
+                            load();
+                            refresh_all(w, cx);
+                        }
                         if r.downloaded > 0 && w.view == crate::app::View::Doc && !w.unsaved
                             && let Some(id) = current.as_deref() {
                             w.open(id, window, cx);
@@ -2582,6 +2594,9 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "内容" => "Content",
         "粘贴图片" => "Paste image",
         "写点什么…" => "Write something…",
+        "展开全部" => "Expand all",
+        "折叠全部" => "Collapse all",
+        "定位当前文档" => "Locate current document",
         "港元" => "Hong Kong dollar",
         "澳大利亚元" => "Australian dollar",
         "瑞士法郎" => "Swiss franc",

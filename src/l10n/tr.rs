@@ -1175,4 +1175,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("内容", "İçerik"),
     ("粘贴图片", "Resmi yapıştır"),
     ("写点什么…", "Bir şeyler yaz…"),
+    ("展开全部", "Tümünü genişlet"),
+    ("折叠全部", "Tümünü daralt"),
+    ("定位当前文档", "Geçerli belgeye git"),
 ];

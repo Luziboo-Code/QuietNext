@@ -1121,4 +1121,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("内容", "Contenido"),
     ("粘贴图片", "Pegar imagen"),
     ("写点什么…", "Escribe algo…"),
+    ("展开全部", "Expandir todo"),
+    ("折叠全部", "Contraer todo"),
+    ("定位当前文档", "Localizar documento actual"),
 ];

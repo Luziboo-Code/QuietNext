@@ -362,6 +362,7 @@ impl Workspace {
     fn section(&self, idx: usize, title: &'static str, cx: &mut Context<Self>) -> Div {
         let group = SharedString::from(format!("section-{idx}"));
         let folded = self.folded[idx];
+        let any_open = self.entries.iter().any(|e| e.meta.folder.is_some() && !e.meta.local() && self.expanded.contains(&e.id));
         let trigger = |id: &'static str, name: &'static str| {
             div()
                 .id(id)
@@ -437,7 +438,20 @@ impl Workspace {
         )
         .child(div().flex_1())
         .when(idx == 1, |d| {
-            d.child(trigger("section-batch", "batch").tip(crate::settings::text("批量操作"), None).on_click(cx.listener(|w, _, _, cx| {
+            d.child(
+                div().id(SharedString::from(format!("section-expand-toggle-{any_open}"))).flex_none().size(px(22.)).p(px(3.)).rounded(px(6.)).cursor_pointer()
+                    .hover(|s| s.bg(Theme::sidebar_hover())).child(icon(if any_open { "chevron-down" } else { "chevron-right" }, 16., Theme::icon()))
+                    .tip(if any_open { crate::settings::text("折叠全部") } else { crate::settings::text("展开全部") }, None)
+                    .on_click(cx.listener(move |w, _, _, cx| {
+                        if any_open { w.collapse_all_pages(); } else { w.expand_all_pages(); }
+                        cx.notify();
+                    })),
+            )
+            .child(trigger("section-locate", "text-search").tip(crate::settings::text("定位当前文档"), None).on_click(cx.listener(|w, _, _, cx| {
+                w.locate_current_page();
+                cx.notify();
+            })))
+            .child(trigger("section-batch", "batch").tip(crate::settings::text("批量操作"), None).on_click(cx.listener(|w, _, _, cx| {
                 w.batch = Some(vec![]);
                 w.folded[1] = false;
                 w.row_menu = None;

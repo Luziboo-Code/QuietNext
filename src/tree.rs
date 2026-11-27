@@ -127,6 +127,41 @@ impl Workspace {
         self.expanded.extend(ids);
     }
 
+    /// 展开全部: open every folder in 我的文档.
+    pub(crate) fn expand_all_pages(&mut self) {
+        self.folded[1] = false;
+        self.expanded = self.entries.iter().filter(|e| e.meta.folder.is_some() && !e.meta.local()).map(|e| e.id.clone()).collect();
+        self.folder_drag.reset();
+    }
+
+    /// 折叠全部: close every folder, keeping the top level in view.
+    pub(crate) fn collapse_all_pages(&mut self) {
+        self.folded[1] = false;
+        self.expanded.clear();
+        self.folder_drag.reset();
+    }
+
+    /// 定位当前文档: unfold its ancestors and scroll the list to its row.
+    pub(crate) fn locate_current_page(&mut self) {
+        let id = match self.view {
+            crate::app::View::Doc => self.current.clone(),
+            crate::app::View::Folder => self.folder_current.clone(),
+            _ => None,
+        };
+        let Some(id) = id else { return };
+        if !self.entries.iter().any(|e| e.id == id) { return }
+        self.folded[1] = false;
+        self.reveal_in_tree(&id);
+        let rows = Tree::new(&self.entries).rows(|id| self.expanded.contains(id));
+        let Some(index) = rows.iter().position(|(e, _)| e.id == id) else { return };
+        let pinned = self.entries.iter().filter(|e| e.meta.pinned).count();
+        let pinned_h = if pinned == 0 { 0. } else { 34. + if self.folded[0] { 0. } else { pinned as f32 * 30. } + 10. };
+        let target = pinned_h + 34. + index as f32 * 31. + 15.;
+        let view = f32::from(self.list_scroll.bounds().size.height);
+        let y = (target - view / 2.).max(0.);
+        self.list_scroll.set_offset(point(self.list_scroll.offset().x, px(y)));
+    }
+
     /// Hand the open document its child pages (for 子页面列表 blocks).
     pub(crate) fn sync_sub_pages(&mut self, cx: &mut Context<Self>) {
         let (Some(id), Some(ed)) = (self.current.clone(), self.editor.clone()) else { return };
