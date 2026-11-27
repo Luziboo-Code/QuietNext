@@ -1,6 +1,6 @@
 [package]
 name = "quiet_md"
-version = "0.1.36"
+version = "0.1.37"
 edition = "2024"
 autobins = false
 description = "A fast, local-first rich text notes app for macOS and Windows, drawn with GPUI and compatible with Feishu DocxXML"
@@ -104,7 +104,7 @@ gpui_wgpu = { path = "vendor/zed/crates/gpui_wgpu" }
 windows-registry = "0.5"
 # PDF and printing (printing.rs): WebView2, on the same `windows` as GPUI.
 webview2-com = "0.38"
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_Memory", "Win32_UI_Controls_Dialogs", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_UI_Controls_Dialogs", "Win32_UI_WindowsAndMessaging"] }
 
 # GPUI is vendored from the Zed repository: an upstream snapshot plus our
 # patch series, kept in sync by tools/vendor-sync (vendor/PATCHES.md).

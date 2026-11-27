@@ -589,9 +589,14 @@ fn code_lang(pre: &Handle) -> Option<String> {
 }
 
 fn image(n: &Handle) -> Option<Block> {
-    let src = attr(n, "src")?.trim().to_string();
+    let src = ["src", "data-src", "data-original", "data-actualsrc", "data-lazy-src"].iter()
+        .filter_map(|key| attr(n, key))
+        .map(|s| s.trim().to_string())
+        .find(|s| !s.is_empty())?;
     let l = src.to_ascii_lowercase();
-    let src = if l.starts_with("http://") || l.starts_with("https://") || l.starts_with("data:image/") {
+    let src = if l.starts_with("//") {
+        format!("https:{src}")
+    } else if l.starts_with("http://") || l.starts_with("https://") || l.starts_with("data:image/") {
         src
     } else {
         let p = src.strip_prefix("file://")?;
@@ -1657,6 +1662,14 @@ mod tests {
         assert!(x.contains("<hr/>"), "{x}");
         assert!(x.contains("lang=\"rust\""), "{x}");
         assert!(x.contains("<code>fn x() {}</code></pre>"), "{x}");
+    }
+
+    #[test]
+    fn html_images_use_lazy_sources() {
+        let x = xml("<p><img data-actualsrc=\"https://pic1.zhimg.com/a.jpg\"></p>\
+                     <p><img data-original=\"//pic2.zhimg.com/b.jpg\"></p>");
+        assert!(x.contains("https://pic1.zhimg.com/a.jpg"), "{x}");
+        assert!(x.contains("https://pic2.zhimg.com/b.jpg"), "{x}");
     }
 
     #[test]
